@@ -172,6 +172,44 @@ const FORM_TIPS={
   "Plank":                 "Elbows under shoulders, body rigid like a board. Squeeze glutes and abs. Don't let hips pike or sag. Breathe.",
 };
 const DAYS=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+
+const QUOTES=[
+  "the body achieves what the mind believes.",
+  "every rep is a vote for who you're becoming.",
+  "progress, not perfection.",
+  "show up. the rest follows.",
+  "you don't find willpower. you build it.",
+  "the pain you feel today is the strength you'll feel tomorrow.",
+  "small steps, taken consistently, move mountains.",
+  "discipline is just choosing between what you want now and what you want most.",
+  "the goal isn't to be better than anyone else. it's to be better than you were yesterday.",
+  "your only competition is the person you were last week.",
+  "earned, not given.",
+  "the work is the way.",
+  "intensity is a choice. make it every time.",
+  "you are always one workout away from a better mood.",
+  "consistency will always beat intensity.",
+  "the iron never lies.",
+  "fall in love with the process and the results will come.",
+  "be the person your future self will thank.",
+  "hard work compounds. start today.",
+  "evolution isn't an event. it's a habit.",
+  "silence the doubt. move the weight.",
+  "what you do when no one's watching defines you.",
+  "champions are made in the moments they want to quit.",
+  "the version of you that you want to be is built one rep at a time.",
+  "your body hears everything your mind says. speak strength.",
+  "do it for the person you want to become.",
+  "grit is a muscle. train it.",
+  "the comeback is always stronger than the setback.",
+  "one more rep. one more step. one more day.",
+  "built with intention.",
+];
+const todayQuote=()=>{
+  const d=new Date();
+  const idx=(d.getFullYear()*10000+d.getMonth()*100+d.getDate())%QUOTES.length;
+  return QUOTES[idx];
+};
 const todayISO=()=>new Date().toISOString().split("T")[0];
 const fmtDate=iso=>new Date(iso+"T12:00:00").toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"});
 function load(k){try{const v=localStorage.getItem(k);return v?JSON.parse(v):null;}catch{return null;}}
@@ -828,8 +866,8 @@ function App(){
     <div style=${{padding:"52px 24px 24px",textAlign:"center",position:"relative"}}>
       <div style=${{fontSize:32,marginBottom:6,filter:"drop-shadow(0 0 12px rgba(184,240,74,0.3))"}}>📖</div>
       <div style=${{color:C.text,fontSize:30,fontWeight:800,letterSpacing:-1,lineHeight:1.1}}>Swoly Bible</div>
-      <div style=${{color:C.soft,fontSize:13,marginTop:5,fontStyle:"italic",fontWeight:400}}>
-        ${todayDone?"another day, another chapter.":"the iron doesn't lift itself."}
+      <div style=${{color:C.soft,fontSize:12,marginTop:6,fontStyle:"italic",fontWeight:400,letterSpacing:0.2,maxWidth:260,margin:"6px auto 0"}}>
+        ${todayQuote()}
       </div>
       <div style=${{position:"absolute",top:52,right:24,textAlign:"right"}}>
         <div style=${{color:streak()>0?C.green:"#2a2a2a",fontSize:24,fontWeight:800,lineHeight:1}}>${streak()}</div>
