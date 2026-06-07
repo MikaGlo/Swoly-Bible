@@ -125,10 +125,37 @@ function _savePRs(p) {
 const C={bg:"#0a0a0a",surface:"#111",border:"#1e1e1e",border2:"#252525",text:"#ede9e3",soft:"#555",muted:"#2a2a2a",green:"#b8f04a"};
 const COLORS=["#4af0c8","#f04a8a","#b8f04a","#a78bfa","#f0924a","#4a9af0","#f0d44a","#e06060"];
 const DEFAULT_WORKOUTS={
-  pull:{label:"Pull",sub:"Back + Biceps",color:"#4af0c8",exercises:["Dumbbell Row","Incline Row","Hammer Curl","Supinating Curl","Band Pull-Apart","Abs — Dead Bug","Abs — Plank","Abs — Leg Raise"]},
-  push:{label:"Push",sub:"Chest + Shoulders + Tris",color:"#f04a8a",exercises:["DB Chest Press","DB Chest Fly","Push-Up","DB Shoulder Press","Lateral Raise","Tricep Extension","Abs — Bicycle Crunch","Abs — Plank"]},
-  legs:{label:"Legs",sub:"Quads + Hams + Glutes",color:"#b8f04a",exercises:["Goblet Squat","Romanian Deadlift","Reverse Lunge","Glute Bridge","Calf Raise","Abs — Dead Bug","Abs — Leg Raise"]},
-  core:{label:"Core/Flow",sub:"Abs + Mobility",color:"#a78bfa",exercises:["Dead Bug","Plank","Bicycle Crunch","Leg Raise","Bird Dog","Cat-Cow","Hip Flexor Stretch"]},
+  push:{label:"Push",sub:"Chest · Shoulders · Tris",color:"#f04a8a",exercises:["DB Chest Press","Incline DB Press","DB Chest Fly","DB Shoulder Press","Lateral Raise","Tricep Pushdown","Overhead Tricep Extension","Push-Up"]},
+  pull:{label:"Pull",sub:"Back · Biceps · Rear Delts",color:"#4af0c8",exercises:["Pull-Up","DB Row","Seated Cable Row","Face Pull","Incline DB Curl","Hammer Curl","Band Pull-Apart"]},
+  legs:{label:"Legs",sub:"Quads · Hams · Glutes",color:"#b8f04a",exercises:["Goblet Squat","Romanian Deadlift","Reverse Lunge","Leg Press","Leg Curl","Hip Thrust","Calf Raise"]},
+  upper:{label:"Upper",sub:"Full upper body",color:"#a78bfa",exercises:["DB Chest Press","DB Row","DB Shoulder Press","Lateral Raise","Hammer Curl","Tricep Pushdown","Face Pull"]},
+};
+
+const FORM_TIPS={
+  "DB Chest Press":        "Feet flat, arch natural. Lower DBs to chest level, elbows ~45° from torso. Press up and slightly in — don't lock out hard at top.",
+  "Incline DB Press":      "Bench at 30–45°. Same as flat press but targets upper chest. Keep shoulder blades pinched back into the pad throughout.",
+  "DB Chest Fly":          "Slight bend in elbows, keep it fixed. Lower in a wide arc until you feel a chest stretch, then squeeze back up. This is a stretch movement — go light.",
+  "DB Shoulder Press":     "Sit upright, core tight. Start with DBs at ear height, elbows slightly forward (not flared straight out). Press up, don't fully lock out.",
+  "Lateral Raise":         "Slight bend in elbows, lead with your elbows not your hands. Raise to shoulder height only. Go lighter than you think — most people cheat this one.",
+  "Tricep Pushdown":       "Elbows glued to your sides — they don't move. Push down and fully extend, squeeze at the bottom. Hinge only at the elbow.",
+  "Overhead Tricep Extension": "Keep elbows pointing forward, not flaring out. Lower the weight behind your head, then extend. Feel the stretch at the bottom.",
+  "Push-Up":               "Hands slightly wider than shoulder-width. Body is a plank — don't let hips sag or pike. Lower chest to floor, elbows ~45° from torso.",
+  "Pull-Up":               "Full hang to start. Pull elbows down and back toward your hips — think about bending a bar over your back. Chin clears bar, then controlled descent.",
+  "DB Row":                "Brace on a bench, back flat and parallel to floor. Pull the DB to your hip, not your shoulder. Lead with your elbow. Full stretch at the bottom.",
+  "Seated Cable Row":      "Sit tall, slight knee bend. Pull to your lower chest/upper stomach. Squeeze shoulder blades together at the end — don't lean way back.",
+  "Face Pull":             "Cable at forehead height. Pull the rope to your face, elbows flaring high and wide. Focus on external rotation — great for shoulder health.",
+  "Incline DB Curl":       "Lay back on incline bench, arms hang straight down. Curl up without swinging. The stretch at the bottom is the whole point of this variation.",
+  "Hammer Curl":           "Neutral grip (thumbs up), keep elbows at your sides. Curl up, squeeze at top. Hits the brachialis and forearm more than a standard curl.",
+  "Band Pull-Apart":       "Hold band at shoulder width, arms straight out in front. Pull apart until band touches your chest. Squeeze shoulder blades. Great for posture.",
+  "Goblet Squat":          "Hold DB at chest, feet shoulder-width with slight toe flare. Squat down keeping chest tall and elbows inside knees. Drive through the whole foot to stand.",
+  "Romanian Deadlift":     "Soft bend in knees, hinge at hips — push them back. Lower the weight along your legs until you feel a hamstring stretch. Drive hips forward to come up.",
+  "Reverse Lunge":         "Step back, lower back knee toward floor. Front shin stays vertical — knee doesn't cave in. Push through front heel to return. More stable than forward lunge.",
+  "Leg Press":             "Feet shoulder-width, mid-plate. Lower until 90° at the knee — don't let lower back round off the pad. Press through heels, don't lock knees at top.",
+  "Leg Curl":              "Lying face down — curl heels toward your glutes. Squeeze at the top. Go slow on the way down. Keep hips pressed into the pad.",
+  "Hip Thrust":            "Upper back on bench, feet flat and close to body. Drive hips up by squeezing glutes hard at the top. Don't hyperextend your lower back.",
+  "Calf Raise":            "Full range — all the way up on toes, all the way down for a stretch. Go slow. Calves respond to time under tension more than heavy weight.",
+  "Dead Bug":              "Lower back pressed flat to floor the whole time. Extend opposite arm and leg, bring back slowly. The second your back lifts, you've gone too far.",
+  "Plank":                 "Elbows under shoulders, body rigid like a board. Squeeze glutes and abs. Don't let hips pike or sag. Breathe.",
 };
 const DAYS=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const todayISO=()=>new Date().toISOString().split("T")[0];
@@ -213,6 +240,7 @@ function App(){
   const[sDate,setSDate]=useState(todayISO());
   const[calMonth,setCalMonth]=useState(()=>{const n=new Date();return{y:n.getFullYear(),m:n.getMonth()};});
   const[calPickDate,setCalPickDate]=useState(null);
+  const[activeTip,setActiveTip]=useState(null);
 
   useEffect(()=>{
     // Load from localStorage immediately so UI is instant
@@ -404,12 +432,21 @@ function App(){
           const hasStarted=sets.length>0;
           return html`<div key=${name} style=${{background:C.surface,borderRadius:14,padding:"14px 14px 12px",marginBottom:10,border:"1px solid "+(isNewPR?w.color+"44":hasStarted?"#282828":C.border),transition:"border-color 0.2s"}}>
             <div style=${{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:prevPR?4:10}}>
-              <span style=${{color:C.text,fontWeight:700,fontSize:15}}>${name}</span>
-              <div style=${{display:"flex",alignItems:"center",gap:6}}>
+              <div style=${{display:"flex",alignItems:"center",gap:7,flex:1,minWidth:0}}>
+                <span style=${{color:C.text,fontWeight:700,fontSize:15,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>${name}</span>
+                ${FORM_TIPS[name]&&html`<button onClick=${()=>setActiveTip(activeTip===name?null:name)}
+                  style=${{background:"none",border:"none",color:activeTip===name?"#b8f04a":"#333",cursor:"pointer",fontSize:13,padding:0,flexShrink:0,lineHeight:1}}>ⓘ</button>`}
+              </div>
+              <div style=${{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
                 ${isNewPR&&html`<span style=${{color:C.green,fontSize:10,fontWeight:800,letterSpacing:0.5}}>PR 🎉</span>`}
                 ${hasStarted&&html`<span style=${{background:w.color+"18",color:w.color,borderRadius:20,padding:"2px 9px",fontSize:11,fontWeight:700}}>${sets.length}</span>`}
               </div>
             </div>
+            ${activeTip===name&&FORM_TIPS[name]&&html`
+              <div style=${{background:"#0d1a0d",border:"1px solid #1a2e1a",borderRadius:8,padding:"10px 12px",marginBottom:10,fontSize:12,color:"#7ab87a",lineHeight:1.6}}>
+                ${FORM_TIPS[name]}
+              </div>
+            `}
             ${prevPR&&html`<div style=${{color:"#3a3a3a",fontSize:11,marginBottom:10,fontFamily:"monospace"}}>prev best · ${prevPR.weight>0?prevPR.weight+"lb":"BW"} × ${prevPR.reps}</div>`}
             <${SetLogger} sets=${sets} prevPR=${prevPR} color=${w.color} onAdd=${s=>addSet(name,s)} onRemove=${i=>removeSet(name,i)}/>
           </div>`;
