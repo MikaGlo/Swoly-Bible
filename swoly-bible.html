@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>Swoly Bible 📖</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:#0a0a0a;font-family:'DM Sans',sans-serif;}
+input,textarea,button{font-family:'DM Sans',sans-serif;}
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button{opacity:1;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script type="module">
+import{h,render}from'https://esm.sh/preact@10.19.3';
+import{useState,useEffect}from'https://esm.sh/preact@10.19.3/hooks';
+import htm from'https://esm.sh/htm@3.1.1';
+const html=htm.bind(h);
+
+// ══════ FIREBASE ══════
+// 1. Go to https://console.firebase.google.com → project "swoly-bible"
+// 2. Firestore → Rules → paste the rules from the comment below
+const FIREBASE_CONFIG = {
+  apiKey:            "AIzaSyB4IYYjEW12xCXpWuJi6SAnQ1fHoaRhrQw",
+  authDomain:        "swoly-bible.firebaseapp.com",
+  projectId:         "swoly-bible",
+  storageBucket:     "swoly-bible.firebasestorage.app",
+  messagingSenderId: "929657540762",
+  appId:             "1:929657540762:web:eec909627e0d7e66904f23",
+  measurementId:     "G-FW53Z8MVKL"
+};
+/* Firestore security rules (paste into Firebase Console → Firestore → Rules):
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /swoly/{doc} {
+      allow read, write: if true;
+    }
+  }
+}
+*/
+
+let db = null;
+let _firestoreReady = false;
+let _unsubWorkouts = null;
+let _unsubSessions = null;
+let _unsubPRs = null;
+
+function _initFirestore(onWorkouts, onSessions, onPRs) {
+  try {
+    if (!FIREBASE_CONFIG.apiKey) return;
+    firebase.initializeApp(FIREBASE_CONFIG);
+    db = firebase.firestore();
+    _firestoreReady = true;
+
+    _unsubWorkouts = db.collection('swoly').doc('workouts')
+      .onSnapshot(snap => {
+        if (!snap.exists) return;
+        const w = snap.data().workouts;
+        if (w) {
+          localStorage.setItem('wt-w', JSON.stringify(w));
+          onWorkouts(w);
+        }
+      }, err => console.warn('Firestore workouts error:', err));
+
+    _unsubSessions = db.collection('swoly').doc('sessions')
+      .onSnapshot(snap => {
+        if (!snap.exists) return;
+        const s = snap.data().sessions;
+        if (s) {
+          localStorage.setItem('wt-s', JSON.stringify(s));
+          onSessions(s);
+        }
+      }, err => console.warn('Firestore sessions error:', err));
+
+    _unsubPRs = db.collection('swoly').doc('prs')
+      .onSnapshot(snap => {
+        if (!snap.exists) return;
+        const p = snap.data().prs;
+        if (p) {
+          localStorage.setItem('wt-p', JSON.stringify(p));
+          onPRs(p);
+        }
+      }, err => console.warn('Firestore prs error:', err));
+
+  } catch(e) {
+    console.warn('Firebase init failed, using localStorage only:', e);
+  }
+}
+
+function _saveWorkouts(w) {
+  localStorage.setItem('wt-w', JSON.stringify(w));
+  if (_firestoreReady && db) {
+    db.collection('swoly').doc('workouts').set({ workouts: w })
+      .catch(e => console.warn('Firestore workouts save failed:', e));
+  }
+}
+function _saveSessions(s) {
+  localStorage.setItem('wt-s', JSON.stringify(s));
+  if (_firestoreReady && db) {
+    db.collection('swoly').doc('sessions').set({ sessions: s })
+      .catch(e => console.warn('Firestore sessions save failed:', e));
+  }
+}
+function _savePRs(p) {
+  localStorage.setItem('wt-p', JSON.stringify(p));
+  if (_firestoreReady && db) {
+    db.collection('swoly').doc('prs').set({ prs: p })
+      .catch(e => console.warn('Firestore prs save failed:', e));
+  }
+}
+
+// ══════ APP ══════
+
+const C={bg:"#0a0a0a",surface:"#111",border:"#1e1e1e",border2:"#252525",text:"#ede9e3",soft:"#555",muted:"#2a2a2a",green:"#b8f04a"};
+const COLORS=["#4af0c8","#f04a8a","#b8f04a","#a78bfa","#f0924a","#4a9af0","#f0d44a","#e06060"];
+const DEFAULT_WORKOUTS={
+  pull:{label:"Pull",sub:"Back + Biceps",color:"#4af0c8",exercises:["Dumbbell Row","Incline Row","Hammer Curl","Supinating Curl","Band Pull-Apart","Abs — Dead Bug","Abs — Plank","Abs — Leg Raise"]},
+  push:{label:"Push",sub:"Chest + Shoulders + Tris",color:"#f04a8a",exercises:["DB Chest Press","DB Chest Fly","Push-Up","DB Shoulder Press","Lateral Raise","Tricep Extension","Abs — Bicycle Crunch","Abs — Plank"]},
+  legs:{label:"Legs",sub:"Quads + Hams + Glutes",color:"#b8f04a",exercises:["Goblet Squat","Romanian Deadlift","Reverse Lunge","Glute Bridge","Calf Raise","Abs — Dead Bug","Abs — Leg Raise"]},
+  core:{label:"Core/Flow",sub:"Abs + Mobility",color:"#a78bfa",exercises:["Dead Bug","Plank","Bicycle Crunch","Leg Raise","Bird Dog","Cat-Cow","Hip Flexor Stretch"]},
+};
+const DAYS=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const todayISO=()=>new Date().toISOString().split("T")[0];
+const fmtDate=iso=>new Date(iso+"T12:00:00").toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"});
+function load(k){try{const v=localStorage.getItem(k);return v?JSON.parse(v):null;}catch{return null;}}
+
+function SetLogger({sets,onAdd,onRemove,color,prevPR}){
+  const[w,setW]=useState("");
+  const[r,setR]=useState("");
+  function add(){
+    const weight=w===""?0:parseFloat(w);
+    const reps=parseInt(r)||0;
+    if(!reps)return;
+    onAdd({weight:isNaN(weight)?0:weight,reps});
+    setW("");setR("");
+  }
+  const bestNow=sets.length?Math.max(...sets.map(s=>s.weight)):null;
+  const isNewPR=bestNow!==null&&(prevPR===undefined||bestNow>(prevPR?.weight??-1));
+  return html`<div>
+    ${sets.length>0&&html`<div style=${{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
+      ${sets.map((s,i)=>html`<button key=${i} onClick=${()=>onRemove(i)} style=${{background:"#181818",border:"1px solid #2a2a2a",borderRadius:8,padding:"6px 11px",fontSize:13,color:C.text,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+        <span style=${{fontWeight:700}}>${s.weight>0?s.weight+"lb":"BW"}</span>
+        <span style=${{color:C.soft}}>×${s.reps}</span>
+        ${isNewPR&&i===sets.length-1&&html`<span style=${{color:C.green,fontSize:9,fontWeight:800}}>PR</span>`}
+        <span style=${{color:"#333",fontSize:10}}>✕</span>
+      </button>`)}
+    </div>`}
+    <div style=${{display:"flex",gap:8}}>
+      <input value=${w} onInput=${e=>setW(e.target.value)} placeholder="lb (0=BW)" type="number" inputMode="decimal"
+        style=${{flex:1,background:"#141414",border:"1px solid #252525",borderRadius:8,color:C.text,fontSize:14,padding:"10px 12px",outline:"none"}}/>
+      <input value=${r} onInput=${e=>setR(e.target.value)} placeholder="reps" type="number" inputMode="numeric"
+        style=${{width:68,background:"#141414",border:"1px solid #252525",borderRadius:8,color:C.text,fontSize:14,padding:"10px 12px",outline:"none"}}/>
+      <button onClick=${add} style=${{background:color,border:"none",borderRadius:8,color:"#0a0a0a",fontWeight:900,fontSize:18,width:46,cursor:"pointer",flexShrink:0}}>+</button>
+    </div>
+  </div>`;
+}
+
+function App(){
+  const[view,setView]=useState("home");
+  const[workouts,setWorkouts]=useState(null);
+  const[sessions,setSessions]=useState([]);
+  const[prs,setPRs]=useState({});
+  const[week,setWeek]=useState({});
+  const[loading,setLoading]=useState(true);
+  const[sKey,setSKey]=useState(null);
+  const[sExList,setSExList]=useState([]);
+  const[sSets,setSSets]=useState({});
+  const[sNote,setSNote]=useState("");
+  const[sDone,setSDone]=useState(false);
+  const[sNewPRs,setSNewPRs]=useState([]);
+  const[sAddEx,setSAddEx]=useState("");
+  const[eKey,setEKey]=useState(null);
+  const[eData,setEData]=useState(null);
+  const[eNewEx,setENewEx]=useState("");
+  const[eConfirm,setEConfirm]=useState(false);
+  const[prEdit,setPrEdit]=useState(null);
+  const[sConfirmExit,setSConfirmExit]=useState(false);
+  const[calViewSession,setCalViewSession]=useState(null);
+  const[sDate,setSDate]=useState(todayISO());
+  const[calMonth,setCalMonth]=useState(()=>{const n=new Date();return{y:n.getFullYear(),m:n.getMonth()};});
+  const[calPickDate,setCalPickDate]=useState(null);
+
+  useEffect(()=>{
+    // Load from localStorage immediately so UI is instant
+    const w=load("wt-w")||DEFAULT_WORKOUTS;
+    const s=load("wt-s")||[];
+    const p=load("wt-p")||{};
+    const wk=load("wt-wk")||{};
+    setWorkouts(w);setSessions(s);setPRs(p);setWeek(wk);
+    setLoading(false);
+
+    // Then start Firestore listeners — they'll sync in and update state live
+    _initFirestore(
+      w => setWorkouts(w),
+      s => setSessions(s),
+      p => setPRs(p)
+    );
+  },[]);
+
+  function startSession(key,date){
+    setSKey(key);setSDate(date||todayISO());setSExList([...workouts[key].exercises]);
+    setSSets({});setSNote("");setSDone(false);setSNewPRs([]);setSAddEx("");
+    setCalPickDate(null);setView("session");
+  }
+  function addSet(name,set){setSSets(p=>({...p,[name]:[...(p[name]||[]),set]}));}
+  function removeSet(name,idx){setSSets(p=>{const c=[...(p[name]||[])];c.splice(idx,1);return{...p,[name]:c};});}
+  function addExToSession(){const t=sAddEx.trim();if(!t)return;setSExList(p=>[...p,t]);setSAddEx("");}
+
+  function finishSession(){
+    const newPRList=[];const updatedPRs={...prs};
+    sExList.forEach(name=>{
+      const sets=sSets[name]||[];if(!sets.length)return;
+      const best=Math.max(...sets.map(s=>s.weight));
+      const prev=prs[name];
+      if(prev===undefined||best>prev.weight){
+        updatedPRs[name]={weight:best,reps:sets.find(s=>s.weight===best)?.reps||0,date:todayISO()};
+        if(prev!==undefined)newPRList.push(name);
+      }
+    });
+    const session={id:Date.now(),date:sDate,key:sKey,label:workouts[sKey].label,color:workouts[sKey].color,exercises:sExList,sets:sSets,note:sNote,newPRs:newPRList};
+    const updS=[session,...sessions];const updW={...week,[sDate]:sKey};
+    setSessions(updS);setPRs(updatedPRs);setWeek(updW);setSNewPRs(newPRList);setSDone(true);
+    _saveSessions(updS);_savePRs(updatedPRs);localStorage.setItem('wt-wk',JSON.stringify(updW));
+  }
+
+  function openEdit(key){
+    setEKey(key);
+    setEData(key?{...workouts[key],exercises:[...workouts[key].exercises]}:{label:"",sub:"",color:COLORS[0],exercises:[]});
+    setENewEx("");setEConfirm(false);setView("edit");
+  }
+  function saveEdit(){
+    const key=eKey||"w_"+Date.now();
+    const upd={...workouts,[key]:eData};
+    setWorkouts(upd);_saveWorkouts(upd);setView("home");
+  }
+  function deleteWorkout(){
+    const upd={...workouts};delete upd[eKey];
+    setWorkouts(upd);_saveWorkouts(upd);setView("home");
+  }
+  function deletePR(name){const upd={...prs};delete upd[name];setPRs(upd);_savePRs(upd);}
+  function updatePR(name,weight,reps){const upd={...prs,[name]:{weight:parseFloat(weight)||0,reps:parseInt(reps)||0,date:prs[name]?.date||todayISO()}};setPRs(upd);_savePRs(upd);setPrEdit(null);}
+
+  function exportData(){
+    const data={workouts,sessions,prs,week,exportedAt:new Date().toISOString()};
+    const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url;a.download="swoly-bible-backup-"+todayISO()+".json";
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function importData(e){
+    const file=e.target.files[0];if(!file)return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      try{
+        const data=JSON.parse(ev.target.result);
+        if(data.sessions){setSessions(data.sessions);_saveSessions(data.sessions);}
+        if(data.prs){setPRs(data.prs);_savePRs(data.prs);}
+        if(data.week){setWeek(data.week);localStorage.setItem('wt-wk',JSON.stringify(data.week));}
+        if(data.workouts){setWorkouts(data.workouts);_saveWorkouts(data.workouts);}
+        alert("Restored! "+(data.sessions?.length||0)+" sessions loaded.");
+      }catch{alert("Couldn't read that file. Make sure it's a Swoly Bible backup.");}
+    };
+    reader.readAsText(file);
+  }
+
+  function deleteSession(id){
+    const target=sessions.find(x=>x.id===id);
+    const u=sessions.filter(x=>x.id!==id);
+    setSessions(u);_saveSessions(u);
+    if(target){
+      const stillHas=u.some(s=>s.date===target.date);
+      if(!stillHas){
+        const updW={...week};delete updW[target.date];
+        setWeek(updW);localStorage.setItem('wt-wk',JSON.stringify(updW));
+      }
+    }
+  }
+
+  const streak=()=>{
+    if(!sessions.length)return 0;
+    const dates=[...new Set(sessions.map(s=>s.date))].sort().reverse();
+    let c=0,d=new Date();
+    for(const dt of dates){const dd=new Date(dt+"T12:00:00");if(Math.round((d-dd)/86400000)<=1){c++;d=dd;}else break;}
+    return c;
+  };
+
+  if(loading||!workouts)return html`<div style=${{background:C.bg,minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}><span style=${{color:"#333",fontFamily:"monospace"}}>loading...</span></div>`;
+
+  const wrap={background:C.bg,minHeight:"100vh",maxWidth:480,margin:"0 auto",paddingBottom:70};
+  const goBack=(to)=>html`<button onClick=${()=>{setEConfirm(false);setView(to);}} style=${{background:"none",border:"none",color:C.soft,cursor:"pointer",fontSize:13,padding:0,marginBottom:14,display:"block"}}>← back</button>`;
+  const lbl=(txt)=>html`<div style=${{color:C.soft,fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase",marginBottom:7}}>${txt}</div>`;
+
+  // ── SESSION ──────────────────────────────────────────────────────
+  if(view==="session"&&sKey){
+    const w=workouts[sKey];
+    const started=sExList.filter(n=>(sSets[n]||[]).length>0).length;
+    const totalSets=Object.values(sSets).flat().length;
+    return html`<div style=${wrap}>
+      <div style=${{padding:"16px 18px 12px",borderBottom:"1px solid "+C.border,position:"sticky",top:0,background:C.bg,zIndex:10}}>
+        ${sConfirmExit&&html`
+          <div style=${{position:"fixed",inset:0,background:"rgba(0,0,0,0.9)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 24px"}}>
+            <div style=${{background:"#141414",borderRadius:16,padding:"24px",width:"100%",maxWidth:400,textAlign:"center"}}>
+              <div style=${{color:C.text,fontWeight:800,fontSize:17,marginBottom:8}}>Discard this session?</div>
+              <div style=${{color:C.soft,fontSize:13,marginBottom:20}}>Any sets you logged won't be saved.</div>
+              <div style=${{display:"flex",gap:10}}>
+                <button onClick=${()=>setSConfirmExit(false)}
+                  style=${{flex:1,padding:"13px",background:"#1e1e1e",border:"none",borderRadius:10,color:C.text,fontWeight:700,fontSize:14,cursor:"pointer"}}>Keep Going</button>
+                <button onClick=${()=>{setSConfirmExit(false);setView("home");}}
+                  style=${{flex:1,padding:"13px",background:"#3a1515",border:"none",borderRadius:10,color:"#e06060",fontWeight:700,fontSize:14,cursor:"pointer"}}>Discard</button>
+              </div>
+            </div>
+          </div>
+        `}
+        <div style=${{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div>
+            <div style=${{color:w.color,fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase"}}>${w.label}</div>
+            <div style=${{color:C.text,fontSize:20,fontWeight:800}}>${w.sub}</div>
+          </div>
+          <div style=${{textAlign:"right"}}>
+            <div style=${{color:C.soft,fontSize:11}}>${started}/${sExList.length} started</div>
+            <div style=${{display:"flex",alignItems:"center",gap:8,marginTop:4,justifyContent:"flex-end"}}>
+              <input type="date" value=${sDate} max=${todayISO()} onInput=${e=>setSDate(e.target.value)}
+                style=${{background:"#1a1a1a",border:"1px solid #2a2a2a",borderRadius:6,color:C.soft,fontSize:11,padding:"3px 6px",outline:"none",colorScheme:"dark"}}/>
+              <button onClick=${()=>setSConfirmExit(true)}
+                style=${{background:"none",border:"none",color:"#3a3a3a",fontSize:11,cursor:"pointer",padding:0}}>✕</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style=${{padding:"14px 18px"}}>
+        ${sExList.map(name=>{
+          const sets=sSets[name]||[];
+          const prevPR=prs[name];
+          const bestNow=sets.length?Math.max(...sets.map(s=>s.weight)):null;
+          const isNewPR=bestNow!==null&&(prevPR===undefined||bestNow>(prevPR?.weight??-1));
+          return html`<div key=${name} style=${{background:C.surface,borderRadius:13,padding:"14px",marginBottom:12,border:"1px solid "+(isNewPR?w.color+"55":C.border)}}>
+            <div style=${{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+              <span style=${{color:C.text,fontWeight:700,fontSize:15}}>${name}</span>
+              <div style=${{display:"flex",alignItems:"center",gap:8}}>
+                ${isNewPR&&html`<span style=${{color:C.green,fontSize:10,fontWeight:800}}>🎉 PR</span>`}
+                ${sets.length>0&&html`<span style=${{background:w.color+"22",color:w.color,borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700,fontFamily:"monospace"}}>${sets.length} ${sets.length===1?"set":"sets"}</span>`}
+              </div>
+            </div>
+            ${prevPR&&html`<div style=${{color:C.soft,fontSize:11,marginBottom:8,fontFamily:"monospace"}}>best: ${prevPR.weight>0?prevPR.weight+"lb":"BW"} × ${prevPR.reps}</div>`}
+            <${SetLogger} sets=${sets} prevPR=${prevPR} color=${w.color} onAdd=${s=>addSet(name,s)} onRemove=${i=>removeSet(name,i)}/>
+          </div>`;
+        })}
+
+        <div style=${{marginBottom:16}}>
+          ${lbl("Add an exercise")}
+          <div style=${{display:"flex",gap:8}}>
+            <input value=${sAddEx} onInput=${e=>setSAddEx(e.target.value)}
+              onKeyDown=${e=>e.key==="Enter"&&addExToSession()}
+              placeholder="e.g. Cable Row, Face Pull..."
+              style=${{flex:1,background:C.surface,border:"1px solid "+C.border2,borderRadius:8,color:C.text,fontSize:14,padding:"10px 12px",outline:"none"}}/>
+            <button onClick=${addExToSession} style=${{background:C.surface,border:"1px solid "+C.border2,borderRadius:8,color:C.soft,fontSize:20,width:46,cursor:"pointer"}}>+</button>
+          </div>
+        </div>
+
+        <textarea value=${sNote} onInput=${e=>setSNote(e.target.value)} placeholder="Notes — weights used, how it felt..." rows="2"
+          style=${{width:"100%",background:C.surface,border:"1px solid "+C.border,borderRadius:10,color:C.text,fontSize:14,padding:"12px 14px",resize:"none",outline:"none",boxSizing:"border-box",marginBottom:14}}></textarea>
+
+        ${!sDone?html`
+          <button onClick=${finishSession} disabled=${totalSets===0}
+            style=${{width:"100%",padding:"16px",background:totalSets===0?"#141414":w.color,color:totalSets===0?C.soft:"#0a0a0a",border:"none",borderRadius:12,fontSize:16,fontWeight:800,cursor:totalSets===0?"default":"pointer"}}>
+            ${totalSets===0?"Log a set to save":"Save Workout"}
+          </button>
+        `:html`
+          <div style=${{background:C.surface,borderRadius:14,padding:"22px",textAlign:"center"}}>
+            <div style=${{fontSize:28,marginBottom:8}}>✓</div>
+            <div style=${{color:C.text,fontWeight:800,fontSize:18}}>Saved!</div>
+            ${sNewPRs.length>0&&html`<div style=${{color:C.green,fontSize:13,marginTop:8,fontWeight:700}}>🎉 New PRs: ${sNewPRs.join(", ")}</div>`}
+            <div style=${{marginTop:14,textAlign:"left"}}>
+              ${sExList.filter(n=>(sSets[n]||[]).length>0).map(name=>{
+                const sets=sSets[name]||[];
+                return html`<div key=${name} style=${{paddingTop:8,paddingBottom:8,borderBottom:"1px solid "+C.border}}>
+                  <div style=${{color:C.text,fontSize:13,fontWeight:600,marginBottom:3}}>${name}</div>
+                  <div style=${{color:C.soft,fontSize:12}}>${sets.map((s,i)=>"Set "+(i+1)+": "+(s.weight>0?s.weight+"lb":"BW")+" × "+s.reps).join("  ·  ")}</div>
+                </div>`;
+              })}
+            </div>
+            <button onClick=${()=>setView("home")} style=${{marginTop:16,background:"#1a1a1a",border:"none",borderRadius:8,color:C.soft,padding:"10px 24px",fontSize:14,cursor:"pointer"}}>← Home</button>
+          </div>
+        `}
+      </div>
+    </div>`;
+  }
+
+  // ── EDIT ─────────────────────────────────────────────────────────
+  if(view==="edit"&&eData){
+    const isNew=!eKey;
+    return html`<div style=${wrap}>
+      <div style=${{padding:"18px 18px 14px",borderBottom:"1px solid "+C.border}}>
+        ${goBack("home")}
+        <div style=${{color:C.text,fontSize:20,fontWeight:800}}>${isNew?"New Workout":"Edit Workout"}</div>
+      </div>
+      <div style=${{padding:"16px 18px"}}>
+        ${lbl("Workout name")}
+        <input value=${eData.label} onInput=${e=>setEData(p=>({...p,label:e.target.value}))} placeholder="e.g. Pull, Full Body..."
+          style=${{width:"100%",background:C.surface,border:"1px solid "+C.border2,borderRadius:9,color:C.text,fontSize:15,padding:"12px 13px",outline:"none",boxSizing:"border-box",marginBottom:16}}/>
+        ${lbl("Description")}
+        <input value=${eData.sub} onInput=${e=>setEData(p=>({...p,sub:e.target.value}))} placeholder="e.g. Back + Biceps"
+          style=${{width:"100%",background:C.surface,border:"1px solid "+C.border2,borderRadius:9,color:C.text,fontSize:15,padding:"12px 13px",outline:"none",boxSizing:"border-box",marginBottom:16}}/>
+        ${lbl("Color")}
+        <div style=${{display:"flex",gap:10,marginBottom:20}}>
+          ${COLORS.map(c=>html`<button key=${c} onClick=${()=>setEData(p=>({...p,color:c}))}
+            style=${{width:26,height:26,borderRadius:"50%",background:c,cursor:"pointer",outline:"none",border:eData.color===c?"3px solid #fff":"2px solid transparent",flexShrink:0}}/>`)}
+        </div>
+        ${lbl("Exercises ("+eData.exercises.length+")")}
+        ${eData.exercises.length===0&&html`<div style=${{color:C.soft,fontSize:13,marginBottom:10,fontStyle:"italic"}}>No exercises yet.</div>`}
+        ${eData.exercises.map((ex,i)=>html`
+          <div key=${i} style=${{display:"flex",alignItems:"center",justifyContent:"space-between",background:C.surface,borderRadius:9,padding:"12px 13px",marginBottom:7,border:"1px solid "+C.border}}>
+            <span style=${{color:C.text,fontSize:14}}>${ex}</span>
+            <button onClick=${()=>setEData(p=>({...p,exercises:p.exercises.filter((_,j)=>j!==i)}))}
+              style=${{background:"none",border:"none",color:"#3a3a3a",cursor:"pointer",fontSize:18,padding:"0 0 0 14px"}}>✕</button>
+          </div>
+        `)}
+        <div style=${{display:"flex",gap:8,marginBottom:22}}>
+          <input value=${eNewEx} onInput=${e=>setENewEx(e.target.value)}
+            onKeyDown=${e=>{if(e.key==="Enter"&&eNewEx.trim()){setEData(p=>({...p,exercises:[...p.exercises,eNewEx.trim()]}));setENewEx("");}}}
+            placeholder="Add exercise..."
+            style=${{flex:1,background:C.surface,border:"1px solid "+C.border2,borderRadius:8,color:C.text,fontSize:14,padding:"11px 12px",outline:"none"}}/>
+          <button onClick=${()=>{if(!eNewEx.trim())return;setEData(p=>({...p,exercises:[...p.exercises,eNewEx.trim()]}));setENewEx("");}}
+            style=${{background:C.surface,border:"1px solid "+C.border2,borderRadius:8,color:C.soft,fontSize:20,width:46,cursor:"pointer"}}>+</button>
+        </div>
+        <button onClick=${saveEdit} disabled=${!eData.label.trim()}
+          style=${{width:"100%",padding:"15px",background:eData.label.trim()?eData.color:"#1a1a1a",color:eData.label.trim()?"#0a0a0a":C.soft,border:"none",borderRadius:12,fontSize:15,fontWeight:800,cursor:eData.label.trim()?"pointer":"default",marginBottom:10}}>
+          ${isNew?"Create Workout":"Save Changes"}
+        </button>
+        ${!isNew&&!eConfirm&&html`
+          <button onClick=${()=>setEConfirm(true)}
+            style=${{width:"100%",padding:"13px",background:"none",color:"#5a2828",border:"1px solid #2a1515",borderRadius:12,fontSize:14,fontWeight:600,cursor:"pointer"}}>
+            Delete this workout
+          </button>
+        `}
+        ${!isNew&&eConfirm&&html`
+          <div style=${{background:"#120a0a",border:"1px solid #3a1515",borderRadius:12,padding:"14px",textAlign:"center"}}>
+            <div style=${{color:"#d06060",fontSize:14,marginBottom:12,fontWeight:600}}>Delete "${eData.label}"?</div>
+            <div style=${{display:"flex",gap:10}}>
+              <button onClick=${()=>setEConfirm(false)} style=${{flex:1,padding:"11px",background:"#1a1a1a",border:"none",borderRadius:8,color:C.soft,cursor:"pointer",fontSize:14}}>Cancel</button>
+              <button onClick=${deleteWorkout} style=${{flex:1,padding:"11px",background:"#3a1515",border:"none",borderRadius:8,color:"#e06060",cursor:"pointer",fontSize:14,fontWeight:700}}>Delete</button>
+            </div>
+          </div>
+        `}
+      </div>
+    </div>`;
+  }
+
+  // ── HISTORY ──────────────────────────────────────────────────────
+  if(view==="history")return html`<div style=${wrap}>
+    <div style=${{padding:"18px 18px 14px",borderBottom:"1px solid "+C.border}}>
+      ${goBack("home")}
+      <div style=${{color:C.text,fontSize:22,fontWeight:800}}>History</div>
+      <div style=${{color:C.soft,fontSize:13,marginTop:2}}>${sessions.length} sessions</div>
+    </div>
+    <div style=${{padding:"12px 18px"}}>
+      ${!sessions.length&&html`<div style=${{color:C.soft,textAlign:"center",padding:"60px 0",fontSize:14}}>No sessions yet.</div>`}
+      ${sessions.map(s=>html`
+        <div key=${s.id} style=${{background:C.surface,borderRadius:12,padding:"14px 16px",marginBottom:10,borderLeft:"3px solid "+s.color}}>
+          <div style=${{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+            <div>
+              <div style=${{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
+                <span style=${{color:s.color,fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>${s.label}</span>
+                <span style=${{color:C.soft,fontSize:11}}>${fmtDate(s.date)}</span>
+              </div>
+              ${s.newPRs?.length>0&&html`<div style=${{color:C.green,fontSize:12}}>🎉 ${s.newPRs.join(", ")}</div>`}
+              ${s.note&&html`<div style=${{color:C.soft,fontSize:12,marginTop:4,fontStyle:"italic"}}>"${s.note}"</div>`}
+            </div>
+            <button onClick=${()=>deleteSession(s.id)} style=${{background:"#1a0a0a",border:"1px solid #3a1515",borderRadius:7,color:"#c05050",cursor:"pointer",fontSize:12,fontWeight:700,padding:"5px 10px"}}>Delete</button>
+          </div>
+          ${(s.exercises||Object.keys(s.sets||{})).map(name=>{
+            const sets=(s.sets||{})[name]||[];
+            if(!sets.length)return null;
+            return html`<div key=${name} style=${{marginTop:6,paddingTop:6,borderTop:"1px solid "+C.border}}>
+              <span style=${{color:C.soft,fontSize:12,fontWeight:600}}>${name} </span>
+              <span style=${{color:C.soft,fontSize:11}}>${sets.length}× · </span>
+              <span style=${{color:C.text,fontSize:12}}>${sets.map(st=>(st.weight>0?st.weight+"lb":"BW")+"×"+st.reps).join(" · ")}</span>
+            </div>`;
+          })}
+        </div>
+      `)}
+    </div>
+  </div>`;
+
+  // ── PRs ──────────────────────────────────────────────────────────
+  if(view==="prs"){
+    const prList=Object.entries(prs).sort((a,b)=>a[0].localeCompare(b[0]));
+    return html`<div style=${wrap}>
+      <div style=${{padding:"18px 18px 14px",borderBottom:"1px solid "+C.border}}>
+        ${goBack("home")}
+        <div style=${{color:C.text,fontSize:22,fontWeight:800}}>Personal Records</div>
+        <div style=${{color:C.soft,fontSize:13,marginTop:2}}>${prList.length} tracked</div>
+      </div>
+      <div style=${{padding:"12px 18px"}}>
+        ${!prList.length&&html`<div style=${{color:C.soft,textAlign:"center",padding:"60px 0",fontSize:14}}>Log workouts to start tracking PRs.</div>`}
+        ${prList.map(([name,pr])=>{
+          const isEditing=prEdit?.name===name;
+          return html`<div key=${name} style=${{background:C.surface,borderRadius:12,padding:"14px 16px",marginBottom:8,border:"1px solid "+C.border}}>
+            ${isEditing?html`
+              <div style=${{color:C.text,fontWeight:700,fontSize:13,marginBottom:10}}>${name}</div>
+              <div style=${{display:"flex",gap:8,marginBottom:8}}>
+                <input value=${prEdit.weight} onInput=${e=>setPrEdit(p=>({...p,weight:e.target.value}))}
+                  placeholder="lb (0=BW)" type="number" inputMode="decimal"
+                  style=${{flex:1,background:"#141414",border:"1px solid #252525",borderRadius:8,color:C.text,fontSize:14,padding:"9px 11px",outline:"none"}}/>
+                <input value=${prEdit.reps} onInput=${e=>setPrEdit(p=>({...p,reps:e.target.value}))}
+                  placeholder="reps" type="number" inputMode="numeric"
+                  style=${{width:70,background:"#141414",border:"1px solid #252525",borderRadius:8,color:C.text,fontSize:14,padding:"9px 11px",outline:"none"}}/>
+              </div>
+              <div style=${{display:"flex",gap:8}}>
+                <button onClick=${()=>updatePR(name,prEdit.weight,prEdit.reps)}
+                  style=${{flex:1,padding:"9px",background:C.green,border:"none",borderRadius:8,color:"#0a0a0a",fontWeight:800,fontSize:13,cursor:"pointer"}}>Save</button>
+                <button onClick=${()=>setPrEdit(null)}
+                  style=${{padding:"9px 14px",background:"#1a1a1a",border:"none",borderRadius:8,color:C.soft,fontSize:13,cursor:"pointer"}}>Cancel</button>
+              </div>
+            `:html`
+              <div style=${{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div>
+                  <div style=${{color:C.text,fontWeight:700,fontSize:14}}>${name}</div>
+                  <div style=${{color:C.soft,fontSize:11,marginTop:2}}>${fmtDate(pr.date)}</div>
+                </div>
+                <div style=${{display:"flex",alignItems:"center",gap:10}}>
+                  <div style=${{textAlign:"right"}}>
+                    <div style=${{color:C.green,fontWeight:800,fontSize:20}}>${pr.weight>0?pr.weight+" lb":"BW"}</div>
+                    <div style=${{color:C.soft,fontSize:12}}>${pr.reps} reps</div>
+                  </div>
+                  <div style=${{display:"flex",flexDirection:"column",gap:5}}>
+                    <button onClick=${()=>setPrEdit({name,weight:pr.weight,reps:pr.reps})}
+                      style=${{background:"#141414",border:"1px solid #252525",borderRadius:6,color:C.soft,cursor:"pointer",fontSize:11,padding:"4px 8px"}}>Edit</button>
+                    <button onClick=${()=>deletePR(name)}
+                      style=${{background:"#1a0a0a",border:"1px solid #3a1515",borderRadius:6,color:"#c05050",cursor:"pointer",fontSize:11,padding:"4px 8px"}}>Del</button>
+                  </div>
+                </div>
+              </div>
+            `}
+          </div>`;
+        })}
+      </div>
+    </div>`;
+  }
+
+  // ── CALENDAR ─────────────────────────────────────────────────────
+  if(view==="calendar"){
+    const{y,m}=calMonth;
+    const firstDay=new Date(y,m,1).getDay();
+    const daysInMonth=new Date(y,m+1,0).getDate();
+    const cells=[];
+    for(let i=0;i<firstDay;i++)cells.push(null);
+    for(let d=1;d<=daysInMonth;d++)cells.push(d);
+    const today=todayISO();
+    const monthLabel=new Date(y,m,1).toLocaleDateString("en-US",{month:"long",year:"numeric"});
+    const prevMonth=()=>setCalMonth(({y,m})=>m===0?{y:y-1,m:11}:{y,m:m-1});
+    const nextMonth=()=>setCalMonth(({y,m})=>m===11?{y:y+1,m:0}:{y,m:m+1});
+    const canGoNext=new Date(y,m+1,1)<=new Date();
+
+    return html`<div style=${wrap}>
+      <div style=${{padding:"18px 18px 14px",borderBottom:"1px solid "+C.border}}>
+        ${goBack("home")}
+        <div style=${{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <button onClick=${prevMonth} style=${{background:"none",border:"none",color:C.soft,cursor:"pointer",fontSize:20,padding:"0 4px"}}>‹</button>
+          <div style=${{color:C.text,fontSize:17,fontWeight:800}}>${monthLabel}</div>
+          <button onClick=${nextMonth} disabled=${!canGoNext} style=${{background:"none",border:"none",color:canGoNext?C.soft:C.muted,cursor:canGoNext?"pointer":"default",fontSize:20,padding:"0 4px"}}>›</button>
+        </div>
+      </div>
+
+      ${calPickDate&&html`
+        <div style=${{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:50,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+          <div style=${{background:"#141414",borderRadius:"16px 16px 0 0",padding:"20px 18px 40px",width:"100%",maxWidth:480}}>
+            <div style=${{color:C.text,fontWeight:700,fontSize:16,marginBottom:4}}>Log workout for</div>
+            <div style=${{color:C.soft,fontSize:13,marginBottom:18}}>${fmtDate(calPickDate)}</div>
+            <div style=${{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+              ${Object.entries(workouts).map(([key,w])=>html`
+                <button key=${key} onClick=${()=>startSession(key,calPickDate)}
+                  style=${{background:C.surface,border:"1px solid "+C.border,borderRadius:12,padding:"14px",cursor:"pointer",textAlign:"left"}}>
+                  <div style=${{width:7,height:7,borderRadius:"50%",background:w.color,marginBottom:8}}/>
+                  <div style=${{color:C.text,fontSize:14,fontWeight:700}}>${w.label}</div>
+                  <div style=${{color:C.soft,fontSize:11,marginTop:2}}>${w.sub}</div>
+                </button>
+              `)}
+            </div>
+            <button onClick=${()=>setCalPickDate(null)} style=${{width:"100%",padding:"12px",background:"#1a1a1a",border:"none",borderRadius:10,color:C.soft,fontSize:14,cursor:"pointer"}}>Cancel</button>
+          </div>
+        </div>
+      `}
+
+      ${calViewSession&&html`
+        <div style=${{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:50,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+          <div style=${{background:"#141414",borderRadius:"16px 16px 0 0",padding:"20px 18px 40px",width:"100%",maxWidth:480}}>
+            <div style=${{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
+              <div>
+                <div style=${{color:calViewSession.color,fontSize:11,fontWeight:700,letterSpacing:2,textTransform:"uppercase",marginBottom:3}}>${calViewSession.label}</div>
+                <div style=${{color:C.text,fontWeight:800,fontSize:17}}>${fmtDate(calViewSession.date)}</div>
+              </div>
+              <button onClick=${()=>setCalViewSession(null)} style=${{background:"none",border:"none",color:C.soft,fontSize:20,cursor:"pointer",padding:0}}>✕</button>
+            </div>
+            ${(calViewSession.exercises||[]).map(name=>{
+              const sets=(calViewSession.sets||{})[name]||[];
+              if(!sets.length)return null;
+              return html`<div key=${name} style=${{paddingTop:8,paddingBottom:8,borderBottom:"1px solid "+C.border}}>
+                <div style=${{color:C.text,fontSize:13,fontWeight:600,marginBottom:3}}>${name}</div>
+                <div style=${{color:C.soft,fontSize:12}}>${sets.map((s,i)=>"Set "+(i+1)+": "+(s.weight>0?s.weight+"lb":"BW")+" × "+s.reps).join("  ·  ")}</div>
+              </div>`;
+            })}
+            ${calViewSession.note&&html`<div style=${{color:C.soft,fontSize:12,marginTop:10,fontStyle:"italic"}}>"${calViewSession.note}"</div>`}
+            <button onClick=${()=>{deleteSession(calViewSession.id);setCalViewSession(null);}}
+              style=${{width:"100%",marginTop:20,padding:"13px",background:"#1a0a0a",border:"1px solid #3a1515",borderRadius:10,color:"#c05050",fontWeight:700,fontSize:14,cursor:"pointer"}}>
+              Delete this session
+            </button>
+          </div>
+        </div>
+      `}
+
+      <div style=${{padding:"14px 18px"}}>
+        <div style=${{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4,marginBottom:8}}>
+          ${["S","M","T","W","T","F","S"].map((d,i)=>html`
+            <div key=${i} style=${{textAlign:"center",color:C.soft,fontSize:10,fontWeight:700,padding:"4px 0"}}>${d}</div>
+          `)}
+        </div>
+        <div style=${{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4}}>
+          ${cells.map((day,i)=>{
+            if(!day)return html`<div key=${"e"+i}/>`;
+            const iso=new Date(y,m,day).toISOString().split("T")[0];
+            const isFuture=iso>today;
+            const isToday=iso===today;
+            const sessionForDay=sessions.find(s=>s.date===iso);
+            const dotColor=sessionForDay?.color;
+            const bgColor=dotColor?(dotColor+"22"):(isToday?"#1e1e1e":"transparent");
+            return html`<div key=${iso}
+              onClick=${()=>{
+                if(isFuture)return;
+                if(sessionForDay)setCalViewSession(sessionForDay);
+                else setCalPickDate(iso);
+              }}
+              style=${{
+                aspectRatio:"1",borderRadius:8,
+                background:bgColor,
+                border:isToday?"1px solid #333":"1px solid transparent",
+                display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+                cursor:isFuture?"default":"pointer",
+                position:"relative",
+              }}>
+              <span style=${{color:isFuture?C.muted:isToday?C.text:C.soft,fontSize:13,fontWeight:isToday?800:400}}>${day}</span>
+              ${dotColor&&html`<div style=${{width:5,height:5,borderRadius:"50%",background:dotColor,marginTop:2}}/>`}
+            </div>`;
+          })}
+        </div>
+
+        <div style=${{marginTop:20}}>
+          <div style=${{color:C.soft,fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>This month</div>
+          ${sessions.filter(s=>{const d=new Date(s.date+"T12:00:00");return d.getFullYear()===y&&d.getMonth()===m;}).length===0
+            &&html`<div style=${{color:C.muted,fontSize:13}}>No sessions logged this month.</div>`}
+          ${sessions.filter(s=>{const d=new Date(s.date+"T12:00:00");return d.getFullYear()===y&&d.getMonth()===m;})
+            .sort((a,b)=>b.date.localeCompare(a.date))
+            .map(s=>html`
+              <div key=${s.id} style=${{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:"1px solid "+C.border}}>
+                <div style=${{width:8,height:8,borderRadius:"50%",background:s.color,flexShrink:0}}/>
+                <div style=${{flex:1}}>
+                  <span style=${{color:C.text,fontSize:13,fontWeight:600}}>${s.label}</span>
+                  <span style=${{color:C.soft,fontSize:12,marginLeft:8}}>${fmtDate(s.date)}</span>
+                </div>
+                ${s.newPRs?.length>0&&html`<span style=${{color:C.green,fontSize:11}}>🎉</span>`}
+              </div>
+          `)}
+        </div>
+      </div>
+    </div>`;
+  }
+
+  // ── BACKUP ───────────────────────────────────────────────────────
+  if(view==="backup"){
+    return html`<div style=${wrap}>
+      <div style=${{padding:"18px 18px 14px",borderBottom:"1px solid "+C.border}}>
+        ${goBack("home")}
+        <div style=${{color:C.text,fontSize:22,fontWeight:800}}>Backup & Restore</div>
+        <div style=${{color:C.soft,fontSize:13,marginTop:2}}>${sessions.length} sessions · ${Object.keys(prs).length} PRs</div>
+      </div>
+      <div style=${{padding:"20px 18px"}}>
+
+        <div style=${{background:C.surface,borderRadius:14,padding:"20px",marginBottom:14,border:"1px solid "+C.border}}>
+          <div style=${{color:C.text,fontWeight:700,fontSize:15,marginBottom:6}}>📤 Export</div>
+          <div style=${{color:C.soft,fontSize:13,lineHeight:1.6,marginBottom:16}}>Downloads everything — all sessions, PRs, workouts, and history — as a single JSON file. Save it to iCloud, Google Drive, or your camera roll.</div>
+          <button onClick=${exportData}
+            style=${{width:"100%",padding:"14px",background:C.green,border:"none",borderRadius:10,color:"#0a0a0a",fontWeight:800,fontSize:15,cursor:"pointer"}}>
+            Download Backup
+          </button>
+        </div>
+
+        <div style=${{background:C.surface,borderRadius:14,padding:"20px",border:"1px solid "+C.border}}>
+          <div style=${{color:C.text,fontWeight:700,fontSize:15,marginBottom:6}}>📥 Restore</div>
+          <div style=${{color:C.soft,fontSize:13,lineHeight:1.6,marginBottom:16}}>Got a backup file? Load it here to restore all your data. This will overwrite your current data, so export first if needed.</div>
+          <label style=${{display:"block",width:"100%",padding:"14px",background:"#141414",border:"1px dashed #333",borderRadius:10,color:C.soft,fontWeight:700,fontSize:15,cursor:"pointer",textAlign:"center",boxSizing:"border-box"}}>
+            Choose Backup File
+            <input type="file" accept=".json" onInput=${importData} style=${{display:"none"}}/>
+          </label>
+        </div>
+
+        <div style=${{marginTop:20,padding:"14px 16px",background:"#0d0d0d",borderRadius:10,border:"1px solid #1a1a1a"}}>
+          <div style=${{color:"#444",fontSize:12,lineHeight:1.7}}>
+            💡 <strong style=${{color:"#555"}}>Tip:</strong> Your data is now synced to the cloud — it'll appear on any device you open this app on. Use Export as a manual backup before big changes.
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  // ── HOME ─────────────────────────────────────────────────────────
+  const weekDays=Array.from({length:7},(_,i)=>{
+    const d=new Date();d.setDate(d.getDate()-6+i);
+    const iso=d.toISOString().split("T")[0];
+    const isToday=iso===todayISO();
+    const sessionForDay=sessions.find(s=>s.date===iso);
+    return{iso,label:DAYS[d.getDay()],isToday,session:sessionForDay,color:sessionForDay?.color};
+  });
+
+  return html`<div style=${wrap}>
+    <div style=${{padding:"28px 18px 20px"}}>
+      <div style=${{color:C.soft,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:6}}>Your Training Log</div>
+      <div style=${{color:C.text,fontSize:26,fontWeight:800,lineHeight:1.15}}>Swoly Bible 📖</div>
+    </div>
+
+    <div style=${{padding:"0 18px 20px"}}>
+      <div style=${{display:"flex",gap:6}}>
+        ${weekDays.map(d=>html`
+          <div key=${d.iso} style=${{flex:1,textAlign:"center"}}>
+            <div style=${{color:d.isToday?C.text:C.soft,fontSize:10,fontWeight:d.isToday?700:400,marginBottom:5}}>${d.label}</div>
+            <div style=${{height:30,borderRadius:7,
+              background:d.color?d.color+"33":"#141414",
+              border:d.isToday?"1px solid "+(d.color||"#333"):"1px solid "+C.border,
+              display:"flex",alignItems:"center",justifyContent:"center"}}>
+              ${d.color&&html`<div style=${{width:6,height:6,borderRadius:"50%",background:d.color}}/>`}
+            </div>
+          </div>
+        `)}
+      </div>
+    </div>
+
+    ${sessions.length>0&&html`
+      <div style=${{margin:"0 18px 20px",background:C.surface,borderRadius:12,padding:"14px",display:"flex"}}>
+        ${[{label:"Sessions",val:sessions.length},{label:"Streak",val:streak()+"d"},{label:"PRs",val:Object.keys(prs).length}].map((s,i)=>html`
+          <div key=${i} style=${{flex:1,textAlign:"center",borderRight:i<2?"1px solid "+C.border:"none"}}>
+            <div style=${{color:C.green,fontSize:20,fontWeight:800}}>${s.val}</div>
+            <div style=${{color:C.soft,fontSize:10,marginTop:2}}>${s.label}</div>
+          </div>
+        `)}
+      </div>
+    `}
+
+    <div style=${{padding:"0 18px"}}>
+      <div style=${{color:C.soft,fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>My workouts</div>
+      <div style=${{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+        ${Object.entries(workouts).map(([key,w])=>html`
+          <div key=${key} style=${{position:"relative"}}>
+            <button onClick=${()=>startSession(key)} style=${{width:"100%",background:C.surface,border:"1px solid "+C.border,borderRadius:14,padding:"18px 14px 14px",cursor:"pointer",textAlign:"left",display:"block"}}>
+              <div style=${{width:8,height:8,borderRadius:"50%",background:w.color,marginBottom:10}}/>
+              <div style=${{color:C.text,fontSize:15,fontWeight:800}}>${w.label}</div>
+              <div style=${{color:C.soft,fontSize:11,marginTop:3,lineHeight:1.4}}>${w.sub}</div>
+              <div style=${{color:"#333",fontSize:10,marginTop:8,fontFamily:"monospace"}}>${w.exercises.length} exercises</div>
+            </button>
+            <button onClick=${()=>openEdit(key)} style=${{position:"absolute",top:8,right:8,background:"none",border:"none",color:"#333",cursor:"pointer",fontSize:13,padding:4}}>✏️</button>
+          </div>
+        `)}
+        <button onClick=${()=>openEdit(null)} style=${{background:"#0d0d0d",border:"1px dashed #252525",borderRadius:14,padding:"18px 14px",cursor:"pointer",display:"flex",flexDirection:"column",justifyContent:"center",alignItems:"center",minHeight:100}}>
+          <div style=${{color:"#2a2a2a",fontSize:26,marginBottom:4}}>+</div>
+          <div style=${{color:"#2a2a2a",fontSize:12}}>New Workout</div>
+        </button>
+      </div>
+      <div style=${{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+        <button onClick=${()=>setView("prs")} style=${{background:C.surface,border:"1px solid "+C.border,borderRadius:12,padding:"13px",color:C.soft,fontSize:13,cursor:"pointer",fontWeight:600}}>🏆 PRs</button>
+        <button onClick=${()=>setView("history")} style=${{background:C.surface,border:"1px solid "+C.border,borderRadius:12,padding:"13px",color:C.soft,fontSize:13,cursor:"pointer",fontWeight:600}}>📋 Log</button>
+      </div>
+      <div style=${{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <button onClick=${()=>{const n=new Date();setCalMonth({y:n.getFullYear(),m:n.getMonth()});setView("calendar");}} style=${{background:C.surface,border:"1px solid "+C.border,borderRadius:12,padding:"13px",color:C.soft,fontSize:13,cursor:"pointer",fontWeight:600}}>📅 Calendar</button>
+        <button onClick=${()=>setView("backup")} style=${{background:C.surface,border:"1px solid "+C.border,borderRadius:12,padding:"13px",color:C.soft,fontSize:13,cursor:"pointer",fontWeight:600}}>💾 Backup</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+render(html`<${App}/>`,document.getElementById('app'));
+</script>
+</body>
+</html>
