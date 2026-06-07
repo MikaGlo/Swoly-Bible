@@ -908,7 +908,7 @@ function App(){
                 style=${{flex:1,padding:"13px",background:workouts[calMarkKey]?.color,border:"none",borderRadius:12,color:"#0a0a0a",fontWeight:800,fontSize:14,cursor:"pointer"}}>
                 Save — marked
               </button>
-              <button onClick=${()=>{startSession(calMarkKey,calPickDate);}}
+              <button onClick=${()=>{const d=calPickDate;setCalPickDate(null);setCalMarkKey(null);startSession(calMarkKey,d);}}
                 style=${{flex:1,padding:"13px",background:"#1e1e1e",border:"none",borderRadius:12,color:C.soft,fontWeight:700,fontSize:14,cursor:"pointer"}}>
                 Log sets →
               </button>
