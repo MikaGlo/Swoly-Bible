@@ -138,31 +138,54 @@ function load(k){try{const v=localStorage.getItem(k);return v?JSON.parse(v):null
 function SetLogger({sets,onAdd,onRemove,color,prevPR}){
   const[w,setW]=useState("");
   const[r,setR]=useState("");
+  const[bw,setBw]=useState(false);
   function add(){
-    const weight=w===""?0:parseFloat(w);
+    const weight=bw?0:(w===""?null:parseFloat(w));
+    if(weight===null&&!bw)return;
     const reps=parseInt(r)||0;
     if(!reps)return;
     onAdd({weight:isNaN(weight)?0:weight,reps});
-    setW("");setR("");
+    setW("");setR("");setBw(false);
+  }
+  function repeatLast(){
+    if(!sets.length)return;
+    onAdd({...sets[sets.length-1]});
+  }
+  function toggleBW(){
+    setBw(p=>{if(!p)setW("");return !p;});
   }
   const bestNow=sets.length?Math.max(...sets.map(s=>s.weight)):null;
   const isNewPR=bestNow!==null&&(prevPR===undefined||bestNow>(prevPR?.weight??-1));
   return html`<div>
     ${sets.length>0&&html`<div style=${{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
-      ${sets.map((s,i)=>html`<button key=${i} onClick=${()=>onRemove(i)} style=${{background:"#181818",border:"1px solid #2a2a2a",borderRadius:8,padding:"6px 11px",fontSize:13,color:C.text,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
-        <span style=${{fontWeight:700}}>${s.weight>0?s.weight+"lb":"BW"}</span>
-        <span style=${{color:C.soft}}>×${s.reps}</span>
-        ${isNewPR&&i===sets.length-1&&html`<span style=${{color:C.green,fontSize:9,fontWeight:800}}>PR</span>`}
-        <span style=${{color:"#333",fontSize:10}}>✕</span>
-      </button>`)}
+      ${sets.map((s,i)=>html`<div key=${i} style=${{display:"flex",alignItems:"center",background:"#181818",border:"1px solid #2a2a2a",borderRadius:8,overflow:"hidden"}}>
+        <span style=${{padding:"6px 10px",fontSize:13,color:C.text,fontWeight:700}}>${s.weight>0?s.weight+"lb":"BW"}</span>
+        <span style=${{color:C.soft,fontSize:13}}>×${s.reps}</span>
+        ${isNewPR&&i===sets.length-1&&html`<span style=${{color:C.green,fontSize:9,fontWeight:800,marginLeft:4}}>PR</span>`}
+        <button onClick=${()=>onRemove(i)} style=${{background:"none",border:"none",borderLeft:"1px solid #2a2a2a",color:"#444",cursor:"pointer",padding:"6px 8px",fontSize:12,lineHeight:1}}>✕</button>
+      </div>`)}
     </div>`}
-    <div style=${{display:"flex",gap:8}}>
-      <input value=${w} onInput=${e=>setW(e.target.value)} placeholder="lb (0=BW)" type="number" inputMode="decimal"
-        style=${{flex:1,background:"#141414",border:"1px solid #252525",borderRadius:8,color:C.text,fontSize:14,padding:"10px 12px",outline:"none"}}/>
+    <div style=${{display:"flex",gap:6}}>
+      ${bw
+        ?html`<div style=${{flex:1,background:"#141414",border:"1px solid "+color+"88",borderRadius:8,color:color,fontSize:13,fontWeight:700,padding:"10px 12px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <span>Bodyweight</span>
+            <button onClick=${toggleBW} style=${{background:"none",border:"none",color:"#555",cursor:"pointer",fontSize:11,padding:0}}>change</button>
+          </div>`
+        :html`<input value=${w} onInput=${e=>setW(e.target.value)} placeholder="lbs" type="number" inputMode="decimal"
+            style=${{flex:1,background:"#141414",border:"1px solid #252525",borderRadius:8,color:C.text,fontSize:15,padding:"10px 12px",outline:"none",minWidth:0}}/>`
+      }
+      <button onClick=${toggleBW}
+        style=${{background:bw?color+"22":"#141414",border:"1px solid "+(bw?color+"66":"#252525"),borderRadius:8,color:bw?color:C.soft,fontWeight:700,fontSize:12,padding:"0 10px",cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}}>BW</button>
       <input value=${r} onInput=${e=>setR(e.target.value)} placeholder="reps" type="number" inputMode="numeric"
-        style=${{width:68,background:"#141414",border:"1px solid #252525",borderRadius:8,color:C.text,fontSize:14,padding:"10px 12px",outline:"none"}}/>
-      <button onClick=${add} style=${{background:color,border:"none",borderRadius:8,color:"#0a0a0a",fontWeight:900,fontSize:18,width:46,cursor:"pointer",flexShrink:0}}>+</button>
+        style=${{width:62,background:"#141414",border:"1px solid #252525",borderRadius:8,color:C.text,fontSize:15,padding:"10px 8px",outline:"none",textAlign:"center"}}/>
+      <button onClick=${add} style=${{background:color,border:"none",borderRadius:8,color:"#0a0a0a",fontWeight:900,fontSize:20,width:44,cursor:"pointer",flexShrink:0}}>+</button>
     </div>
+    ${sets.length>0&&html`
+      <button onClick=${repeatLast}
+        style=${{marginTop:8,width:"100%",padding:"8px",background:"#141414",border:"1px dashed #2a2a2a",borderRadius:8,color:C.soft,fontSize:12,cursor:"pointer",fontWeight:600,letterSpacing:0.5}}>
+        ↻ repeat last set (${sets[sets.length-1].weight>0?sets[sets.length-1].weight+"lb":"BW"} × ${sets[sets.length-1].reps})
+      </button>
+    `}
   </div>`;
 }
 
@@ -325,11 +348,11 @@ function App(){
     return c;
   };
 
-  if(loading||!workouts)return html`<div style=${{background:C.bg,minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}><span style=${{color:"#333",fontFamily:"monospace"}}>loading...</span></div>`;
+  if(loading||!workouts)return html`<div style=${{background:C.bg,minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}><span style=${{color:"#333",fontSize:13,letterSpacing:2}}>LOADING</span></div>`;
 
-  const wrap={background:C.bg,minHeight:"100vh",maxWidth:480,margin:"0 auto",paddingBottom:70};
-  const goBack=(to)=>html`<button onClick=${()=>{setEConfirm(false);setView(to);}} style=${{background:"none",border:"none",color:C.soft,cursor:"pointer",fontSize:13,padding:0,marginBottom:14,display:"block"}}>← back</button>`;
-  const lbl=(txt)=>html`<div style=${{color:C.soft,fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase",marginBottom:7}}>${txt}</div>`;
+  const wrap={background:C.bg,minHeight:"100vh",maxWidth:480,margin:"0 auto",paddingBottom:80};
+  const goBack=(to)=>html`<button onClick=${()=>{setEConfirm(false);setView(to);}} style=${{background:"none",border:"none",color:C.soft,cursor:"pointer",fontSize:13,padding:0,marginBottom:16,display:"flex",alignItems:"center",gap:5}}>← Back</button>`;
+  const lbl=(txt)=>html`<div style=${{color:"#3a3a3a",fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>${txt}</div>`;
 
   // ── SESSION ──────────────────────────────────────────────────────
   if(view==="session"&&sKey){
@@ -337,90 +360,94 @@ function App(){
     const started=sExList.filter(n=>(sSets[n]||[]).length>0).length;
     const totalSets=Object.values(sSets).flat().length;
     return html`<div style=${wrap}>
-      <div style=${{padding:"16px 18px 12px",borderBottom:"1px solid "+C.border,position:"sticky",top:0,background:C.bg,zIndex:10}}>
+      <div style=${{padding:"14px 18px 12px",borderBottom:"1px solid "+C.border,position:"sticky",top:0,background:"rgba(10,10,10,0.97)",backdropFilter:"blur(8px)",zIndex:10}}>
         ${sConfirmExit&&html`
-          <div style=${{position:"fixed",inset:0,background:"rgba(0,0,0,0.9)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 24px"}}>
-            <div style=${{background:"#141414",borderRadius:16,padding:"24px",width:"100%",maxWidth:400,textAlign:"center"}}>
-              <div style=${{color:C.text,fontWeight:800,fontSize:17,marginBottom:8}}>Discard this session?</div>
-              <div style=${{color:C.soft,fontSize:13,marginBottom:20}}>Any sets you logged won't be saved.</div>
+          <div style=${{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 24px"}}>
+            <div style=${{background:"#141414",borderRadius:20,padding:"28px 24px",width:"100%",maxWidth:360,textAlign:"center",border:"1px solid #2a2a2a"}}>
+              <div style=${{color:C.text,fontWeight:800,fontSize:18,marginBottom:6}}>Discard session?</div>
+              <div style=${{color:C.soft,fontSize:13,marginBottom:24}}>Your logged sets won't be saved.</div>
               <div style=${{display:"flex",gap:10}}>
                 <button onClick=${()=>setSConfirmExit(false)}
-                  style=${{flex:1,padding:"13px",background:"#1e1e1e",border:"none",borderRadius:10,color:C.text,fontWeight:700,fontSize:14,cursor:"pointer"}}>Keep Going</button>
+                  style=${{flex:1,padding:"14px",background:"#1e1e1e",border:"none",borderRadius:12,color:C.text,fontWeight:700,fontSize:14,cursor:"pointer"}}>Keep going</button>
                 <button onClick=${()=>{setSConfirmExit(false);_clearActive();setView("home");}}
-                  style=${{flex:1,padding:"13px",background:"#3a1515",border:"none",borderRadius:10,color:"#e06060",fontWeight:700,fontSize:14,cursor:"pointer"}}>Discard</button>
+                  style=${{flex:1,padding:"14px",background:"#2a1010",border:"1px solid #3a1515",borderRadius:12,color:"#e06060",fontWeight:700,fontSize:14,cursor:"pointer"}}>Discard</button>
               </div>
             </div>
           </div>
         `}
         <div style=${{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <div>
-            <div style=${{color:w.color,fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase"}}>${w.label}</div>
-            <div style=${{color:C.text,fontSize:20,fontWeight:800}}>${w.sub}</div>
+            <div style=${{color:w.color,fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase",marginBottom:2}}>${w.label}</div>
+            <div style=${{color:C.text,fontSize:19,fontWeight:800,lineHeight:1.2}}>${w.sub}</div>
           </div>
-          <div style=${{textAlign:"right"}}>
-            <div style=${{color:C.soft,fontSize:11}}>${started}/${sExList.length} started</div>
-            <div style=${{display:"flex",alignItems:"center",gap:8,marginTop:4,justifyContent:"flex-end"}}>
+          <div style=${{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
+            <div style=${{display:"flex",alignItems:"center",gap:8}}>
+              <span style=${{color:C.soft,fontSize:11}}>${started}/${sExList.length} done</span>
+              ${totalSets>0&&html`<span style=${{background:w.color+"22",color:w.color,borderRadius:20,padding:"2px 9px",fontSize:11,fontWeight:700}}>${totalSets} sets</span>`}
+            </div>
+            <div style=${{display:"flex",alignItems:"center",gap:8}}>
               <input type="date" value=${sDate} max=${todayISO()} onInput=${e=>setSDate(e.target.value)}
-                style=${{background:"#1a1a1a",border:"1px solid #2a2a2a",borderRadius:6,color:C.soft,fontSize:11,padding:"3px 6px",outline:"none",colorScheme:"dark"}}/>
+                style=${{background:"transparent",border:"none",color:"#3a3a3a",fontSize:11,padding:0,outline:"none",colorScheme:"dark",cursor:"pointer"}}/>
               <button onClick=${()=>setSConfirmExit(true)}
-                style=${{background:"none",border:"none",color:"#3a3a3a",fontSize:11,cursor:"pointer",padding:0}}>✕</button>
+                style=${{background:"#1a1a1a",border:"1px solid #2a2a2a",borderRadius:6,color:C.soft,fontSize:12,cursor:"pointer",padding:"4px 8px",lineHeight:1}}>✕</button>
             </div>
           </div>
         </div>
       </div>
-      <div style=${{padding:"14px 18px"}}>
+
+      <div style=${{padding:"12px 18px"}}>
         ${sExList.map(name=>{
           const sets=sSets[name]||[];
           const prevPR=prs[name];
           const bestNow=sets.length?Math.max(...sets.map(s=>s.weight)):null;
           const isNewPR=bestNow!==null&&(prevPR===undefined||bestNow>(prevPR?.weight??-1));
-          return html`<div key=${name} style=${{background:C.surface,borderRadius:13,padding:"14px",marginBottom:12,border:"1px solid "+(isNewPR?w.color+"55":C.border)}}>
-            <div style=${{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+          const hasStarted=sets.length>0;
+          return html`<div key=${name} style=${{background:C.surface,borderRadius:14,padding:"14px 14px 12px",marginBottom:10,border:"1px solid "+(isNewPR?w.color+"44":hasStarted?"#282828":C.border),transition:"border-color 0.2s"}}>
+            <div style=${{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:prevPR?4:10}}>
               <span style=${{color:C.text,fontWeight:700,fontSize:15}}>${name}</span>
-              <div style=${{display:"flex",alignItems:"center",gap:8}}>
-                ${isNewPR&&html`<span style=${{color:C.green,fontSize:10,fontWeight:800}}>🎉 PR</span>`}
-                ${sets.length>0&&html`<span style=${{background:w.color+"22",color:w.color,borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700,fontFamily:"monospace"}}>${sets.length} ${sets.length===1?"set":"sets"}</span>`}
+              <div style=${{display:"flex",alignItems:"center",gap:6}}>
+                ${isNewPR&&html`<span style=${{color:C.green,fontSize:10,fontWeight:800,letterSpacing:0.5}}>PR 🎉</span>`}
+                ${hasStarted&&html`<span style=${{background:w.color+"18",color:w.color,borderRadius:20,padding:"2px 9px",fontSize:11,fontWeight:700}}>${sets.length}</span>`}
               </div>
             </div>
-            ${prevPR&&html`<div style=${{color:C.soft,fontSize:11,marginBottom:8,fontFamily:"monospace"}}>best: ${prevPR.weight>0?prevPR.weight+"lb":"BW"} × ${prevPR.reps}</div>`}
+            ${prevPR&&html`<div style=${{color:"#3a3a3a",fontSize:11,marginBottom:10,fontFamily:"monospace"}}>prev best · ${prevPR.weight>0?prevPR.weight+"lb":"BW"} × ${prevPR.reps}</div>`}
             <${SetLogger} sets=${sets} prevPR=${prevPR} color=${w.color} onAdd=${s=>addSet(name,s)} onRemove=${i=>removeSet(name,i)}/>
           </div>`;
         })}
 
-        <div style=${{marginBottom:16}}>
-          ${lbl("Add an exercise")}
+        <div style=${{marginTop:4,marginBottom:14}}>
           <div style=${{display:"flex",gap:8}}>
             <input value=${sAddEx} onInput=${e=>setSAddEx(e.target.value)}
               onKeyDown=${e=>e.key==="Enter"&&addExToSession()}
-              placeholder="e.g. Cable Row, Face Pull..."
-              style=${{flex:1,background:C.surface,border:"1px solid "+C.border2,borderRadius:8,color:C.text,fontSize:14,padding:"10px 12px",outline:"none"}}/>
-            <button onClick=${addExToSession} style=${{background:C.surface,border:"1px solid "+C.border2,borderRadius:8,color:C.soft,fontSize:20,width:46,cursor:"pointer"}}>+</button>
+              placeholder="Add exercise (e.g. Cable Row)..."
+              style=${{flex:1,background:"#0d0d0d",border:"1px solid #1e1e1e",borderRadius:10,color:C.soft,fontSize:13,padding:"11px 14px",outline:"none"}}/>
+            <button onClick=${addExToSession} style=${{background:"#0d0d0d",border:"1px solid #1e1e1e",borderRadius:10,color:"#3a3a3a",fontSize:22,width:46,cursor:"pointer",lineHeight:1}}>+</button>
           </div>
         </div>
 
-        <textarea value=${sNote} onInput=${e=>setSNote(e.target.value)} placeholder="Notes — weights used, how it felt..." rows="2"
-          style=${{width:"100%",background:C.surface,border:"1px solid "+C.border,borderRadius:10,color:C.text,fontSize:14,padding:"12px 14px",resize:"none",outline:"none",boxSizing:"border-box",marginBottom:14}}></textarea>
+        <textarea value=${sNote} onInput=${e=>setSNote(e.target.value)} placeholder="Session notes..." rows="2"
+          style=${{width:"100%",background:"#0d0d0d",border:"1px solid #1a1a1a",borderRadius:10,color:C.soft,fontSize:13,padding:"11px 14px",resize:"none",outline:"none",boxSizing:"border-box",marginBottom:14}}></textarea>
 
         ${!sDone?html`
           <button onClick=${finishSession} disabled=${totalSets===0}
-            style=${{width:"100%",padding:"16px",background:totalSets===0?"#141414":w.color,color:totalSets===0?C.soft:"#0a0a0a",border:"none",borderRadius:12,fontSize:16,fontWeight:800,cursor:totalSets===0?"default":"pointer"}}>
+            style=${{width:"100%",padding:"17px",background:totalSets===0?"#111":w.color,color:totalSets===0?"#2a2a2a":"#0a0a0a",border:"none",borderRadius:14,fontSize:16,fontWeight:800,cursor:totalSets===0?"default":"pointer",letterSpacing:0.3,transition:"background 0.2s"}}>
             ${totalSets===0?"Log a set to save":"Save Workout"}
           </button>
         `:html`
-          <div style=${{background:C.surface,borderRadius:14,padding:"22px",textAlign:"center"}}>
-            <div style=${{fontSize:28,marginBottom:8}}>✓</div>
-            <div style=${{color:C.text,fontWeight:800,fontSize:18}}>Saved!</div>
-            ${sNewPRs.length>0&&html`<div style=${{color:C.green,fontSize:13,marginTop:8,fontWeight:700}}>🎉 New PRs: ${sNewPRs.join(", ")}</div>`}
+          <div style=${{background:C.surface,borderRadius:16,padding:"24px",textAlign:"center",border:"1px solid #1e1e1e"}}>
+            <div style=${{width:44,height:44,borderRadius:"50%",background:w.color+"22",border:"1px solid "+w.color+"44",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 12px",fontSize:20}}>✓</div>
+            <div style=${{color:C.text,fontWeight:800,fontSize:18,marginBottom:4}}>Workout saved</div>
+            ${sNewPRs.length>0&&html`<div style=${{color:C.green,fontSize:13,marginBottom:12,fontWeight:600}}>New PRs: ${sNewPRs.join(", ")} 🎉</div>`}
             <div style=${{marginTop:14,textAlign:"left"}}>
               ${sExList.filter(n=>(sSets[n]||[]).length>0).map(name=>{
                 const sets=sSets[name]||[];
-                return html`<div key=${name} style=${{paddingTop:8,paddingBottom:8,borderBottom:"1px solid "+C.border}}>
+                return html`<div key=${name} style=${{paddingTop:9,paddingBottom:9,borderBottom:"1px solid "+C.border}}>
                   <div style=${{color:C.text,fontSize:13,fontWeight:600,marginBottom:3}}>${name}</div>
-                  <div style=${{color:C.soft,fontSize:12}}>${sets.map((s,i)=>"Set "+(i+1)+": "+(s.weight>0?s.weight+"lb":"BW")+" × "+s.reps).join("  ·  ")}</div>
+                  <div style=${{color:C.soft,fontSize:12,fontFamily:"monospace"}}>${sets.map((s,i)=>(s.weight>0?s.weight+"lb":"BW")+" × "+s.reps).join("  ·  ")}</div>
                 </div>`;
               })}
             </div>
-            <button onClick=${()=>setView("home")} style=${{marginTop:16,background:"#1a1a1a",border:"none",borderRadius:8,color:C.soft,padding:"10px 24px",fontSize:14,cursor:"pointer"}}>← Home</button>
+            <button onClick=${()=>setView("home")} style=${{marginTop:18,width:"100%",background:"#141414",border:"none",borderRadius:10,color:C.soft,padding:"13px",fontSize:14,cursor:"pointer",fontWeight:600}}>← Back to home</button>
           </div>
         `}
       </div>
@@ -751,23 +778,38 @@ function App(){
     const sessionForDay=sessions.find(s=>s.date===iso);
     return{iso,label:DAYS[d.getDay()],isToday,session:sessionForDay,color:sessionForDay?.color};
   });
+  const lastSession=sessions[0];
+  const todayDone=weekDays[6].color;
 
   return html`<div style=${wrap}>
-    <div style=${{padding:"28px 18px 20px"}}>
-      <div style=${{color:C.soft,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:6}}>Your Training Log</div>
-      <div style=${{color:C.text,fontSize:26,fontWeight:800,lineHeight:1.15}}>Swoly Bible 📖</div>
+    <div style=${{padding:"28px 18px 16px",display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
+      <div>
+        <div style=${{color:"#2a2a2a",fontSize:10,letterSpacing:3,textTransform:"uppercase",marginBottom:5,fontWeight:700}}>SWOLY BIBLE</div>
+        <div style=${{color:C.text,fontSize:28,fontWeight:800,lineHeight:1.1,letterSpacing:-0.5}}>
+          ${todayDone?"Good work. 💪":"Let's train."}
+        </div>
+      </div>
+      ${sessions.length>0&&html`
+        <div style=${{textAlign:"right"}}>
+          <div style=${{color:C.green,fontSize:22,fontWeight:800,lineHeight:1}}>${streak()}</div>
+          <div style=${{color:"#333",fontSize:10,fontWeight:700,letterSpacing:1}}>DAY STREAK</div>
+        </div>
+      `}
     </div>
 
-    <div style=${{padding:"0 18px 20px"}}>
-      <div style=${{display:"flex",gap:6}}>
+    <div style=${{padding:"0 18px 18px"}}>
+      <div style=${{display:"flex",gap:5}}>
         ${weekDays.map(d=>html`
           <div key=${d.iso} style=${{flex:1,textAlign:"center"}}>
-            <div style=${{color:d.isToday?C.text:C.soft,fontSize:10,fontWeight:d.isToday?700:400,marginBottom:5}}>${d.label}</div>
-            <div style=${{height:30,borderRadius:7,
-              background:d.color?d.color+"33":"#141414",
-              border:d.isToday?"1px solid "+(d.color||"#333"):"1px solid "+C.border,
+            <div style=${{color:d.isToday?C.text:"#2a2a2a",fontSize:9,fontWeight:700,marginBottom:5,letterSpacing:0.5,textTransform:"uppercase"}}>${d.label}</div>
+            <div style=${{height:34,borderRadius:8,
+              background:d.color?d.color+"22":"#0e0e0e",
+              border:"1px solid "+(d.isToday?(d.color||"#2a2a2a"):d.color?d.color+"33":"#161616"),
               display:"flex",alignItems:"center",justifyContent:"center"}}>
-              ${d.color&&html`<div style=${{width:6,height:6,borderRadius:"50%",background:d.color}}/>`}
+              ${d.color
+                ?html`<div style=${{width:7,height:7,borderRadius:"50%",background:d.color,boxShadow:"0 0 6px "+d.color+"88"}}/>`
+                :d.isToday?html`<div style=${{width:4,height:4,borderRadius:"50%",background:"#2a2a2a"}}/>`:null
+              }
             </div>
           </div>
         `)}
@@ -775,42 +817,62 @@ function App(){
     </div>
 
     ${sessions.length>0&&html`
-      <div style=${{margin:"0 18px 20px",background:C.surface,borderRadius:12,padding:"14px",display:"flex"}}>
-        ${[{label:"Sessions",val:sessions.length},{label:"Streak",val:streak()+"d"},{label:"PRs",val:Object.keys(prs).length}].map((s,i)=>html`
-          <div key=${i} style=${{flex:1,textAlign:"center",borderRight:i<2?"1px solid "+C.border:"none"}}>
-            <div style=${{color:C.green,fontSize:20,fontWeight:800}}>${s.val}</div>
-            <div style=${{color:C.soft,fontSize:10,marginTop:2}}>${s.label}</div>
+      <div style=${{margin:"0 18px 20px",display:"flex",gap:8}}>
+        ${[{label:"Sessions",val:sessions.length},{label:"PRs",val:Object.keys(prs).length}].map((s,i)=>html`
+          <div key=${i} style=${{flex:1,background:C.surface,borderRadius:12,padding:"13px 14px",border:"1px solid "+C.border}}>
+            <div style=${{color:C.green,fontSize:22,fontWeight:800,lineHeight:1}}>${s.val}</div>
+            <div style=${{color:"#333",fontSize:10,marginTop:3,fontWeight:700,letterSpacing:1,textTransform:"uppercase"}}>${s.label}</div>
           </div>
         `)}
+        ${lastSession&&html`
+          <div style=${{flex:2,background:C.surface,borderRadius:12,padding:"13px 14px",border:"1px solid "+C.border,overflow:"hidden"}}>
+            <div style=${{color:"#333",fontSize:10,fontWeight:700,letterSpacing:1,textTransform:"uppercase",marginBottom:3}}>Last</div>
+            <div style=${{display:"flex",alignItems:"center",gap:7}}>
+              <div style=${{width:6,height:6,borderRadius:"50%",background:lastSession.color,flexShrink:0}}/>
+              <div style=${{color:C.text,fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>${lastSession.label}</div>
+            </div>
+            <div style=${{color:"#2a2a2a",fontSize:11,marginTop:1}}>${fmtDate(lastSession.date)}</div>
+          </div>
+        `}
       </div>
     `}
 
     <div style=${{padding:"0 18px"}}>
-      <div style=${{color:C.soft,fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>My workouts</div>
-      <div style=${{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+      <div style=${{color:"#282828",fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>Workouts</div>
+      <div style=${{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
         ${Object.entries(workouts).map(([key,w])=>html`
           <div key=${key} style=${{position:"relative"}}>
-            <button onClick=${()=>startSession(key)} style=${{width:"100%",background:C.surface,border:"1px solid "+C.border,borderRadius:14,padding:"18px 14px 14px",cursor:"pointer",textAlign:"left",display:"block"}}>
-              <div style=${{width:8,height:8,borderRadius:"50%",background:w.color,marginBottom:10}}/>
-              <div style=${{color:C.text,fontSize:15,fontWeight:800}}>${w.label}</div>
-              <div style=${{color:C.soft,fontSize:11,marginTop:3,lineHeight:1.4}}>${w.sub}</div>
-              <div style=${{color:"#333",fontSize:10,marginTop:8,fontFamily:"monospace"}}>${w.exercises.length} exercises</div>
+            <button onClick=${()=>startSession(key)} style=${{width:"100%",background:C.surface,border:"1px solid #161616",borderRadius:14,padding:"16px 14px 14px",cursor:"pointer",textAlign:"left",display:"block"}}>
+              <div style=${{width:6,height:6,borderRadius:"50%",background:w.color,marginBottom:10,boxShadow:"0 0 8px "+w.color+"66"}}/>
+              <div style=${{color:C.text,fontSize:15,fontWeight:800,marginBottom:2}}>${w.label}</div>
+              <div style=${{color:"#3a3a3a",fontSize:11,lineHeight:1.4}}>${w.sub}</div>
             </button>
-            <button onClick=${()=>openEdit(key)} style=${{position:"absolute",top:8,right:8,background:"none",border:"none",color:"#333",cursor:"pointer",fontSize:13,padding:4}}>✏️</button>
+            <button onClick=${()=>openEdit(key)} style=${{position:"absolute",top:10,right:10,background:"none",border:"none",color:"#282828",cursor:"pointer",fontSize:12,padding:2,lineHeight:1}}>✏</button>
           </div>
         `)}
-        <button onClick=${()=>openEdit(null)} style=${{background:"#0d0d0d",border:"1px dashed #252525",borderRadius:14,padding:"18px 14px",cursor:"pointer",display:"flex",flexDirection:"column",justifyContent:"center",alignItems:"center",minHeight:100}}>
-          <div style=${{color:"#2a2a2a",fontSize:26,marginBottom:4}}>+</div>
-          <div style=${{color:"#2a2a2a",fontSize:12}}>New Workout</div>
+        <button onClick=${()=>openEdit(null)} style=${{background:"#0a0a0a",border:"1px dashed #1e1e1e",borderRadius:14,padding:"16px 14px",cursor:"pointer",display:"flex",flexDirection:"column",justifyContent:"center",alignItems:"center",minHeight:90}}>
+          <div style=${{color:"#222",fontSize:24,marginBottom:2,lineHeight:1}}>+</div>
+          <div style=${{color:"#222",fontSize:11,fontWeight:600}}>New workout</div>
         </button>
       </div>
-      <div style=${{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
-        <button onClick=${()=>setView("prs")} style=${{background:C.surface,border:"1px solid "+C.border,borderRadius:12,padding:"13px",color:C.soft,fontSize:13,cursor:"pointer",fontWeight:600}}>🏆 PRs</button>
-        <button onClick=${()=>setView("history")} style=${{background:C.surface,border:"1px solid "+C.border,borderRadius:12,padding:"13px",color:C.soft,fontSize:13,cursor:"pointer",fontWeight:600}}>📋 Log</button>
-      </div>
-      <div style=${{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-        <button onClick=${()=>{const n=new Date();setCalMonth({y:n.getFullYear(),m:n.getMonth()});setView("calendar");}} style=${{background:C.surface,border:"1px solid "+C.border,borderRadius:12,padding:"13px",color:C.soft,fontSize:13,cursor:"pointer",fontWeight:600}}>📅 Calendar</button>
-        <button onClick=${()=>setView("backup")} style=${{background:C.surface,border:"1px solid "+C.border,borderRadius:12,padding:"13px",color:C.soft,fontSize:13,cursor:"pointer",fontWeight:600}}>💾 Backup</button>
+
+      <div style=${{display:"flex",gap:8,marginTop:4}}>
+        <button onClick=${()=>setView("prs")} style=${{flex:1,background:C.surface,border:"1px solid #161616",borderRadius:12,padding:"14px 10px",cursor:"pointer",textAlign:"center"}}>
+          <div style=${{fontSize:16,marginBottom:3}}>🏆</div>
+          <div style=${{color:"#3a3a3a",fontSize:11,fontWeight:700}}>PRs</div>
+        </button>
+        <button onClick=${()=>setView("history")} style=${{flex:1,background:C.surface,border:"1px solid #161616",borderRadius:12,padding:"14px 10px",cursor:"pointer",textAlign:"center"}}>
+          <div style=${{fontSize:16,marginBottom:3}}>📋</div>
+          <div style=${{color:"#3a3a3a",fontSize:11,fontWeight:700}}>History</div>
+        </button>
+        <button onClick=${()=>{const n=new Date();setCalMonth({y:n.getFullYear(),m:n.getMonth()});setView("calendar");}} style=${{flex:1,background:C.surface,border:"1px solid #161616",borderRadius:12,padding:"14px 10px",cursor:"pointer",textAlign:"center"}}>
+          <div style=${{fontSize:16,marginBottom:3}}>📅</div>
+          <div style=${{color:"#3a3a3a",fontSize:11,fontWeight:700}}>Calendar</div>
+        </button>
+        <button onClick=${()=>setView("backup")} style=${{flex:1,background:C.surface,border:"1px solid #161616",borderRadius:12,padding:"14px 10px",cursor:"pointer",textAlign:"center"}}>
+          <div style=${{fontSize:16,marginBottom:3}}>💾</div>
+          <div style=${{color:"#3a3a3a",fontSize:11,fontWeight:700}}>Backup</div>
+        </button>
       </div>
     </div>
   </div>`;
