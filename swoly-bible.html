@@ -198,6 +198,16 @@ function App(){
     const p=load("wt-p")||{};
     const wk=load("wt-wk")||{};
     setWorkouts(w);setSessions(s);setPRs(p);setWeek(wk);
+
+    // Restore any in-progress session that was interrupted
+    const active=load("wt-active");
+    if(active&&active.sKey){
+      setSKey(active.sKey);setSDate(active.sDate||todayISO());
+      setSExList(active.sExList||[]);setSSets(active.sSets||{});
+      setSNote(active.sNote||"");setSDone(false);
+      setView("session");
+    }
+
     setLoading(false);
 
     // Then start Firestore listeners — they'll sync in and update state live
@@ -208,14 +218,30 @@ function App(){
     );
   },[]);
 
+  function _saveActive(key,date,exList,sets,note){
+    localStorage.setItem('wt-active',JSON.stringify({sKey:key,sDate:date,sExList:exList,sSets:sets,sNote:note}));
+  }
+  function _clearActive(){localStorage.removeItem('wt-active');}
+
   function startSession(key,date){
-    setSKey(key);setSDate(date||todayISO());setSExList([...workouts[key].exercises]);
+    const d=date||todayISO();
+    const exList=[...workouts[key].exercises];
+    setSKey(key);setSDate(d);setSExList(exList);
     setSSets({});setSNote("");setSDone(false);setSNewPRs([]);setSAddEx("");
+    _saveActive(key,d,exList,{},"");
     setCalPickDate(null);setView("session");
   }
-  function addSet(name,set){setSSets(p=>({...p,[name]:[...(p[name]||[]),set]}));}
-  function removeSet(name,idx){setSSets(p=>{const c=[...(p[name]||[])];c.splice(idx,1);return{...p,[name]:c};});}
-  function addExToSession(){const t=sAddEx.trim();if(!t)return;setSExList(p=>[...p,t]);setSAddEx("");}
+  function addSet(name,set){
+    setSSets(p=>{const n={...p,[name]:[...(p[name]||[]),set]};_saveActive(sKey,sDate,sExList,n,sNote);return n;});
+  }
+  function removeSet(name,idx){
+    setSSets(p=>{const c=[...(p[name]||[])];c.splice(idx,1);const n={...p,[name]:c};_saveActive(sKey,sDate,sExList,n,sNote);return n;});
+  }
+  function addExToSession(){
+    const t=sAddEx.trim();if(!t)return;
+    setSExList(p=>{const n=[...p,t];_saveActive(sKey,sDate,n,sSets,sNote);return n;});
+    setSAddEx("");
+  }
 
   function finishSession(){
     const newPRList=[];const updatedPRs={...prs};
@@ -232,6 +258,7 @@ function App(){
     const updS=[session,...sessions];const updW={...week,[sDate]:sKey};
     setSessions(updS);setPRs(updatedPRs);setWeek(updW);setSNewPRs(newPRList);setSDone(true);
     _saveSessions(updS);_savePRs(updatedPRs);localStorage.setItem('wt-wk',JSON.stringify(updW));
+    _clearActive();
   }
 
   function openEdit(key){
@@ -319,7 +346,7 @@ function App(){
               <div style=${{display:"flex",gap:10}}>
                 <button onClick=${()=>setSConfirmExit(false)}
                   style=${{flex:1,padding:"13px",background:"#1e1e1e",border:"none",borderRadius:10,color:C.text,fontWeight:700,fontSize:14,cursor:"pointer"}}>Keep Going</button>
-                <button onClick=${()=>{setSConfirmExit(false);setView("home");}}
+                <button onClick=${()=>{setSConfirmExit(false);_clearActive();setView("home");}}
                   style=${{flex:1,padding:"13px",background:"#3a1515",border:"none",borderRadius:10,color:"#e06060",fontWeight:700,fontSize:14,cursor:"pointer"}}>Discard</button>
               </div>
             </div>
