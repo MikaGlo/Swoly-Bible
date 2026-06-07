@@ -284,6 +284,7 @@ function App(){
   const[sDate,setSDate]=useState(todayISO());
   const[calMonth,setCalMonth]=useState(()=>{const n=new Date();return{y:n.getFullYear(),m:n.getMonth()};});
   const[calPickDate,setCalPickDate]=useState(null);
+  const[calMarkKey,setCalMarkKey]=useState(null);
   const[activeTip,setActiveTip]=useState(null);
 
   useEffect(()=>{
@@ -317,6 +318,14 @@ function App(){
     localStorage.setItem('wt-active',JSON.stringify({sKey:key,sDate:date,sExList:exList,sSets:sets,sNote:note}));
   }
   function _clearActive(){localStorage.removeItem('wt-active');}
+
+  function markDay(key,date){
+    const w=workouts[key];
+    const session={id:Date.now(),date,key,label:w.label,color:w.color,exercises:[],sets:{},note:"marked",newPRs:[]};
+    const updS=[session,...sessions];
+    setSessions(updS);_saveSessions(updS);
+    setCalPickDate(null);setCalMarkKey(null);
+  }
 
   function startSession(key,date){
     const d=date||todayISO();
@@ -880,17 +889,32 @@ function App(){
         <div style=${{background:"#121212",borderRadius:"20px 20px 0 0",padding:"22px 18px 34px",width:"100%",maxWidth:480,border:"1px solid #1e1e1e",maxHeight:"55vh",overflowY:"auto"}}>
           <div style=${{color:C.text,fontWeight:800,fontSize:16,marginBottom:2}}>Mark workout</div>
           <div style=${{color:C.soft,fontSize:13,marginBottom:18}}>${fmtDate(calPickDate)}</div>
-          <div style=${{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+          <div style=${{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
             ${Object.entries(workouts).map(([key,w])=>html`
-              <button key=${key} onClick=${()=>startSession(key,calPickDate)}
-                style=${{background:C.surface,border:"1px solid #1e1e1e",borderRadius:12,padding:"14px",cursor:"pointer",textAlign:"left"}}>
-                <div style=${{width:6,height:6,borderRadius:"50%",background:w.color,marginBottom:8,boxShadow:"0 0 6px "+w.color+"66"}}/>
-                <div style=${{color:C.text,fontSize:14,fontWeight:700}}>${w.label}</div>
-                <div style=${{color:C.soft,fontSize:11,marginTop:2}}>${w.sub}</div>
+              <button key=${key} onClick=${()=>setCalMarkKey(calMarkKey===key?null:key)}
+                style=${{display:"flex",alignItems:"center",gap:10,background:calMarkKey===key?w.color+"18":C.surface,border:"1px solid "+(calMarkKey===key?w.color+"55":"#1e1e1e"),borderRadius:12,padding:"13px 14px",cursor:"pointer",textAlign:"left",width:"100%"}}>
+                <div style=${{width:8,height:8,borderRadius:"50%",background:w.color,boxShadow:"0 0 8px "+w.color+"88",flexShrink:0}}/>
+                <div style=${{flex:1}}>
+                  <div style=${{color:C.text,fontSize:14,fontWeight:700}}>${w.label}</div>
+                  <div style=${{color:C.soft,fontSize:11}}>${w.sub}</div>
+                </div>
+                ${calMarkKey===key&&html`<div style=${{color:w.color,fontSize:16}}>✓</div>`}
               </button>
             `)}
           </div>
-          <button onClick=${()=>setCalPickDate(null)} style=${{width:"100%",padding:"13px",background:"#1a1a1a",border:"none",borderRadius:10,color:C.soft,fontSize:14,cursor:"pointer"}}>Cancel</button>
+          ${calMarkKey&&html`
+            <div style=${{display:"flex",gap:8,marginBottom:8}}>
+              <button onClick=${()=>{markDay(calMarkKey,calPickDate);}}
+                style=${{flex:1,padding:"13px",background:workouts[calMarkKey]?.color,border:"none",borderRadius:12,color:"#0a0a0a",fontWeight:800,fontSize:14,cursor:"pointer"}}>
+                Save — marked
+              </button>
+              <button onClick=${()=>{startSession(calMarkKey,calPickDate);}}
+                style=${{flex:1,padding:"13px",background:"#1e1e1e",border:"none",borderRadius:12,color:C.soft,fontWeight:700,fontSize:14,cursor:"pointer"}}>
+                Log sets →
+              </button>
+            </div>
+          `}
+          <button onClick=${()=>{setCalPickDate(null);setCalMarkKey(null);}} style=${{width:"100%",padding:"13px",background:"#1a1a1a",border:"none",borderRadius:10,color:C.soft,fontSize:14,cursor:"pointer"}}>Cancel</button>
         </div>
       </div>
     `}
