@@ -128,7 +128,7 @@ const DEFAULT_WORKOUTS={
   push:{label:"Push",sub:"Chest · Shoulders · Tris",color:"#f04a8a",exercises:["DB Chest Press","Incline DB Press","DB Chest Fly","DB Shoulder Press","Lateral Raise","Tricep Pushdown","Overhead Tricep Extension","Push-Up"]},
   pull:{label:"Pull",sub:"Back · Biceps · Rear Delts",color:"#4af0c8",exercises:["Pull-Up","DB Row","Seated Cable Row","Face Pull","Incline DB Curl","Hammer Curl","Band Pull-Apart"]},
   legs:{label:"Legs",sub:"Quads · Hams · Glutes",color:"#b8f04a",exercises:["Goblet Squat","Romanian Deadlift","Reverse Lunge","Leg Press","Leg Curl","Hip Thrust","Calf Raise"]},
-  upper:{label:"Upper",sub:"Full upper body",color:"#a78bfa",exercises:["DB Chest Press","DB Row","DB Shoulder Press","Lateral Raise","Hammer Curl","Tricep Pushdown","Face Pull"]},
+  full:{label:"Full Body",sub:"Push · Pull · Legs",color:"#a78bfa",exercises:["Goblet Squat","Romanian Deadlift","DB Chest Press","DB Row","DB Shoulder Press","Lateral Raise","Hammer Curl","Tricep Pushdown"]},
 };
 
 const FORM_TIPS={
@@ -379,7 +379,7 @@ function App(){
   if(loading||!workouts)return html`<div style=${{background:C.bg,minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}><span style=${{color:"#333",fontSize:13,letterSpacing:2}}>LOADING</span></div>`;
 
   const wrap={background:C.bg,minHeight:"100vh",maxWidth:480,margin:"0 auto",paddingBottom:80};
-  const goBack=(to)=>html`<button onClick=${()=>{setEConfirm(false);setView(to);}} style=${{background:"none",border:"none",color:C.soft,cursor:"pointer",fontSize:13,padding:0,marginBottom:16,display:"flex",alignItems:"center",gap:5}}>← Back</button>`;
+  const goBack=(to)=>html`<button onClick=${()=>{setEConfirm(false);setView(to);}} style=${{background:"#161616",border:"1px solid #222",borderRadius:8,color:C.soft,cursor:"pointer",fontSize:13,padding:"7px 14px",marginBottom:16,display:"inline-flex",alignItems:"center",gap:5}}>← Back</button>`;
   const lbl=(txt)=>html`<div style=${{color:"#3a3a3a",fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>${txt}</div>`;
 
   // ── SESSION ──────────────────────────────────────────────────────
@@ -826,31 +826,51 @@ function App(){
           ${todayDone?"Good work. 💪":"Let's train."}
         </div>
       </div>
-      ${sessions.length>0&&html`
-        <div style=${{textAlign:"right"}}>
-          <div style=${{color:C.green,fontSize:22,fontWeight:800,lineHeight:1}}>${streak()}</div>
-          <div style=${{color:"#333",fontSize:10,fontWeight:700,letterSpacing:1}}>DAY STREAK</div>
-        </div>
-      `}
+      <div style=${{textAlign:"right"}}>
+        <div style=${{color:streak()>0?C.green:"#2a2a2a",fontSize:22,fontWeight:800,lineHeight:1}}>${streak()}</div>
+        <div style=${{color:"#2a2a2a",fontSize:10,fontWeight:700,letterSpacing:1}}>DAY STREAK</div>
+      </div>
     </div>
+
+    ${calPickDate&&html`
+      <div style=${{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:50,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+        <div style=${{background:"#121212",borderRadius:"20px 20px 0 0",padding:"22px 18px 44px",width:"100%",maxWidth:480,border:"1px solid #1e1e1e"}}>
+          <div style=${{color:C.text,fontWeight:800,fontSize:16,marginBottom:2}}>Mark workout</div>
+          <div style=${{color:C.soft,fontSize:13,marginBottom:18}}>${fmtDate(calPickDate)}</div>
+          <div style=${{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+            ${Object.entries(workouts).map(([key,w])=>html`
+              <button key=${key} onClick=${()=>startSession(key,calPickDate)}
+                style=${{background:C.surface,border:"1px solid #1e1e1e",borderRadius:12,padding:"14px",cursor:"pointer",textAlign:"left"}}>
+                <div style=${{width:6,height:6,borderRadius:"50%",background:w.color,marginBottom:8,boxShadow:"0 0 6px "+w.color+"66"}}/>
+                <div style=${{color:C.text,fontSize:14,fontWeight:700}}>${w.label}</div>
+                <div style=${{color:C.soft,fontSize:11,marginTop:2}}>${w.sub}</div>
+              </button>
+            `)}
+          </div>
+          <button onClick=${()=>setCalPickDate(null)} style=${{width:"100%",padding:"13px",background:"#1a1a1a",border:"none",borderRadius:10,color:C.soft,fontSize:14,cursor:"pointer"}}>Cancel</button>
+        </div>
+      </div>
+    `}
 
     <div style=${{padding:"0 18px 18px"}}>
       <div style=${{display:"flex",gap:5}}>
         ${weekDays.map(d=>html`
-          <div key=${d.iso} style=${{flex:1,textAlign:"center"}}>
+          <div key=${d.iso} style=${{flex:1,textAlign:"center"}} onClick=${()=>{if(!d.color&&!d.isToday)setCalPickDate(d.iso);}}>
             <div style=${{color:d.isToday?C.text:"#2a2a2a",fontSize:9,fontWeight:700,marginBottom:5,letterSpacing:0.5,textTransform:"uppercase"}}>${d.label}</div>
             <div style=${{height:34,borderRadius:8,
               background:d.color?d.color+"22":"#0e0e0e",
               border:"1px solid "+(d.isToday?(d.color||"#2a2a2a"):d.color?d.color+"33":"#161616"),
-              display:"flex",alignItems:"center",justifyContent:"center"}}>
+              display:"flex",alignItems:"center",justifyContent:"center",
+              cursor:(!d.color&&!d.isToday)?"pointer":"default"}}>
               ${d.color
                 ?html`<div style=${{width:7,height:7,borderRadius:"50%",background:d.color,boxShadow:"0 0 6px "+d.color+"88"}}/>`
-                :d.isToday?html`<div style=${{width:4,height:4,borderRadius:"50%",background:"#2a2a2a"}}/>`:null
+                :d.isToday?html`<div style=${{width:4,height:4,borderRadius:"50%",background:"#2a2a2a"}}/>`:html`<div style=${{color:"#1e1e1e",fontSize:14,lineHeight:1}}>+</div>`
               }
             </div>
           </div>
         `)}
       </div>
+      <div style=${{color:"#1e1e1e",fontSize:10,textAlign:"center",marginTop:6}}>tap a past day to mark it</div>
     </div>
 
     ${sessions.length>0&&html`
