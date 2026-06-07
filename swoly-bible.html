@@ -877,7 +877,7 @@ function App(){
 
     ${calPickDate&&html`
       <div style=${{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:50,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
-        <div style=${{background:"#121212",borderRadius:"20px 20px 0 0",padding:"22px 18px 44px",width:"100%",maxWidth:480,border:"1px solid #1e1e1e"}}>
+        <div style=${{background:"#121212",borderRadius:"20px 20px 0 0",padding:"22px 18px 34px",width:"100%",maxWidth:480,border:"1px solid #1e1e1e",maxHeight:"55vh",overflowY:"auto"}}>
           <div style=${{color:C.text,fontWeight:800,fontSize:16,marginBottom:2}}>Mark workout</div>
           <div style=${{color:C.soft,fontSize:13,marginBottom:18}}>${fmtDate(calPickDate)}</div>
           <div style=${{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
