@@ -868,7 +868,7 @@ function App(){
     const sessionForDay=sessions.find(s=>s.date===iso);
     return{iso,label:DAYS[d.getDay()],isToday,session:sessionForDay,color:sessionForDay?.color};
   });
-  const lastSession=sessions[0];
+  const lastSession=[...sessions].sort((a,b)=>b.date.localeCompare(a.date))[0];
   const todayDone=weekDays[6].color;
 
   return html`<div style=${wrap}>
