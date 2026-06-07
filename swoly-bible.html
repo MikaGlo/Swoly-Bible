@@ -6,17 +6,30 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>Swoly Bible 📖</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<title>Swoly Bible</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
 <!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
-body{background:#0a0a0a;font-family:'DM Sans',sans-serif;}
+body{
+  background:#0c0b09;
+  font-family:'DM Sans',sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+body::before{
+  content:'';
+  position:fixed;inset:0;
+  background:radial-gradient(ellipse at 50% 0%, rgba(184,240,74,0.04) 0%, transparent 65%),
+             radial-gradient(ellipse at 80% 100%, rgba(74,240,200,0.03) 0%, transparent 60%);
+  pointer-events:none;z-index:0;
+}
+#app{position:relative;z-index:1;}
 input,textarea,button{font-family:'DM Sans',sans-serif;}
 input[type=number]::-webkit-inner-spin-button,
 input[type=number]::-webkit-outer-spin-button{opacity:1;}
+button{-webkit-tap-highlight-color:transparent;}
 </style>
 </head>
 <body>
@@ -122,7 +135,7 @@ function _savePRs(p) {
 
 // ══════ APP ══════
 
-const C={bg:"#0a0a0a",surface:"#111",border:"#1e1e1e",border2:"#252525",text:"#ede9e3",soft:"#555",muted:"#2a2a2a",green:"#b8f04a"};
+const C={bg:"#0c0b09",surface:"#131210",border:"#1e1c18",border2:"#262420",text:"#ede9e3",soft:"#58554e",muted:"#252320",green:"#b8f04a"};
 const COLORS=["#4af0c8","#f04a8a","#b8f04a","#a78bfa","#f0924a","#4a9af0","#f0d44a","#e06060"];
 const DEFAULT_WORKOUTS={
   push:{label:"Push",sub:"Chest · Shoulders · Tris",color:"#f04a8a",exercises:["DB Chest Press","Incline DB Press","DB Chest Fly","DB Shoulder Press","Lateral Raise","Tricep Pushdown","Overhead Tricep Extension","Push-Up"]},
@@ -165,21 +178,17 @@ function load(k){try{const v=localStorage.getItem(k);return v?JSON.parse(v):null
 function SetLogger({sets,onAdd,onRemove,color,prevPR}){
   const[w,setW]=useState("");
   const[r,setR]=useState("");
-  const[bw,setBw]=useState(false);
   function add(){
-    const weight=bw?0:(w===""?null:parseFloat(w));
-    if(weight===null&&!bw)return;
+    const weight=w===""?null:parseFloat(w);
+    if(weight===null)return;
     const reps=parseInt(r)||0;
     if(!reps)return;
     onAdd({weight:isNaN(weight)?0:weight,reps});
-    setW("");setR("");setBw(false);
+    setW("");setR("");
   }
   function repeatLast(){
     if(!sets.length)return;
     onAdd({...sets[sets.length-1]});
-  }
-  function toggleBW(){
-    setBw(p=>{if(!p)setW("");return !p;});
   }
   const bestNow=sets.length?Math.max(...sets.map(s=>s.weight)):null;
   const isNewPR=bestNow!==null&&(prevPR===undefined||bestNow>(prevPR?.weight??-1));
@@ -187,30 +196,26 @@ function SetLogger({sets,onAdd,onRemove,color,prevPR}){
     ${sets.length>0&&html`<div style=${{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
       ${sets.map((s,i)=>html`<div key=${i} style=${{display:"flex",alignItems:"center",background:"#181818",border:"1px solid #2a2a2a",borderRadius:8,overflow:"hidden"}}>
         <span style=${{padding:"6px 10px",fontSize:13,color:C.text,fontWeight:700}}>${s.weight>0?s.weight+"lb":"BW"}</span>
-        <span style=${{color:C.soft,fontSize:13}}>×${s.reps}</span>
-        ${isNewPR&&i===sets.length-1&&html`<span style=${{color:C.green,fontSize:9,fontWeight:800,marginLeft:4}}>PR</span>`}
+        <span style=${{color:C.soft,fontSize:13,paddingRight:6}}>×${s.reps}</span>
+        ${isNewPR&&i===sets.length-1&&html`<span style=${{color:C.green,fontSize:9,fontWeight:800,paddingRight:6}}>PR</span>`}
         <button onClick=${()=>onRemove(i)} style=${{background:"none",border:"none",borderLeft:"1px solid #2a2a2a",color:"#444",cursor:"pointer",padding:"6px 8px",fontSize:12,lineHeight:1}}>✕</button>
       </div>`)}
     </div>`}
     <div style=${{display:"flex",gap:6}}>
-      ${bw
-        ?html`<div style=${{flex:1,background:"#141414",border:"1px solid "+color+"88",borderRadius:8,color:color,fontSize:13,fontWeight:700,padding:"10px 12px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-            <span>Bodyweight</span>
-            <button onClick=${toggleBW} style=${{background:"none",border:"none",color:"#555",cursor:"pointer",fontSize:11,padding:0}}>change</button>
-          </div>`
-        :html`<input value=${w} onInput=${e=>setW(e.target.value)} placeholder="lbs" type="number" inputMode="decimal"
-            style=${{flex:1,background:"#141414",border:"1px solid #252525",borderRadius:8,color:C.text,fontSize:15,padding:"10px 12px",outline:"none",minWidth:0}}/>`
-      }
-      <button onClick=${toggleBW}
-        style=${{background:bw?color+"22":"#141414",border:"1px solid "+(bw?color+"66":"#252525"),borderRadius:8,color:bw?color:C.soft,fontWeight:700,fontSize:12,padding:"0 10px",cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}}>BW</button>
+      <div style=${{flex:1,position:"relative",display:"flex"}}>
+        <input value=${w} onInput=${e=>setW(e.target.value)} placeholder="lbs" type="number" inputMode="decimal"
+          style=${{flex:1,background:"#141414",border:"1px solid #252525",borderRadius:8,color:C.text,fontSize:15,padding:"10px 12px",outline:"none",minWidth:0}}/>
+        <button onClick=${()=>setW("0")}
+          style=${{position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",background:w==="0"?color+"33":"#222",border:"1px solid "+(w==="0"?color+"66":"#333"),borderRadius:5,color:w==="0"?color:C.soft,fontWeight:700,fontSize:11,padding:"3px 7px",cursor:"pointer",lineHeight:1}}>BW</button>
+      </div>
       <input value=${r} onInput=${e=>setR(e.target.value)} placeholder="reps" type="number" inputMode="numeric"
         style=${{width:62,background:"#141414",border:"1px solid #252525",borderRadius:8,color:C.text,fontSize:15,padding:"10px 8px",outline:"none",textAlign:"center"}}/>
       <button onClick=${add} style=${{background:color,border:"none",borderRadius:8,color:"#0a0a0a",fontWeight:900,fontSize:20,width:44,cursor:"pointer",flexShrink:0}}>+</button>
     </div>
     ${sets.length>0&&html`
       <button onClick=${repeatLast}
-        style=${{marginTop:8,width:"100%",padding:"8px",background:"#141414",border:"1px dashed #2a2a2a",borderRadius:8,color:C.soft,fontSize:12,cursor:"pointer",fontWeight:600,letterSpacing:0.5}}>
-        ↻ repeat last set (${sets[sets.length-1].weight>0?sets[sets.length-1].weight+"lb":"BW"} × ${sets[sets.length-1].reps})
+        style=${{marginTop:8,width:"100%",padding:"8px",background:"#141414",border:"1px dashed #2a2a2a",borderRadius:8,color:C.soft,fontSize:12,cursor:"pointer",fontWeight:600}}>
+        ↻ repeat last (${sets[sets.length-1].weight>0?sets[sets.length-1].weight+"lb":"BW"} × ${sets[sets.length-1].reps})
       </button>
     `}
   </div>`;
@@ -378,7 +383,7 @@ function App(){
 
   if(loading||!workouts)return html`<div style=${{background:C.bg,minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}><span style=${{color:"#333",fontSize:13,letterSpacing:2}}>LOADING</span></div>`;
 
-  const wrap={background:C.bg,minHeight:"100vh",maxWidth:480,margin:"0 auto",paddingBottom:80};
+  const wrap={background:C.bg,minHeight:"100vh",maxWidth:480,margin:"0 auto",paddingBottom:80,WebkitFontSmoothing:"antialiased"};
   const goBack=(to)=>html`<button onClick=${()=>{setEConfirm(false);setView(to);}} style=${{background:"#161616",border:"1px solid #222",borderRadius:8,color:C.soft,cursor:"pointer",fontSize:13,padding:"7px 14px",marginBottom:16,display:"inline-flex",alignItems:"center",gap:5}}>← Back</button>`;
   const lbl=(txt)=>html`<div style=${{color:"#3a3a3a",fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>${txt}</div>`;
 
@@ -819,16 +824,15 @@ function App(){
   const todayDone=weekDays[6].color;
 
   return html`<div style=${wrap}>
-    <div style=${{padding:"28px 18px 16px",display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
-      <div>
-        <div style=${{color:"#2a2a2a",fontSize:10,letterSpacing:3,textTransform:"uppercase",marginBottom:5,fontWeight:700}}>SWOLY BIBLE</div>
-        <div style=${{color:C.text,fontSize:28,fontWeight:800,lineHeight:1.1,letterSpacing:-0.5}}>
-          ${todayDone?"Good work. 💪":"Let's train."}
-        </div>
+    <div style=${{padding:"52px 24px 24px",textAlign:"center",position:"relative"}}>
+      <div style=${{fontSize:32,marginBottom:6,filter:"drop-shadow(0 0 12px rgba(184,240,74,0.3))"}}>📖</div>
+      <div style=${{color:C.text,fontSize:30,fontWeight:800,letterSpacing:-1,lineHeight:1.1}}>Swoly Bible</div>
+      <div style=${{color:C.soft,fontSize:13,marginTop:5,fontStyle:"italic",fontWeight:400}}>
+        ${todayDone?"another day, another chapter.":"the iron doesn't lift itself."}
       </div>
-      <div style=${{textAlign:"right"}}>
-        <div style=${{color:streak()>0?C.green:"#2a2a2a",fontSize:22,fontWeight:800,lineHeight:1}}>${streak()}</div>
-        <div style=${{color:"#2a2a2a",fontSize:10,fontWeight:700,letterSpacing:1}}>DAY STREAK</div>
+      <div style=${{position:"absolute",top:52,right:24,textAlign:"right"}}>
+        <div style=${{color:streak()>0?C.green:"#2a2a2a",fontSize:24,fontWeight:800,lineHeight:1}}>${streak()}</div>
+        <div style=${{color:"#2a2a2a",fontSize:9,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginTop:1}}>streak</div>
       </div>
     </div>
 
@@ -852,84 +856,118 @@ function App(){
       </div>
     `}
 
-    <div style=${{padding:"0 18px 18px"}}>
+    <div style=${{padding:"0 18px 20px"}}>
       <div style=${{display:"flex",gap:5}}>
         ${weekDays.map(d=>html`
           <div key=${d.iso} style=${{flex:1,textAlign:"center"}} onClick=${()=>{if(!d.color&&!d.isToday)setCalPickDate(d.iso);}}>
-            <div style=${{color:d.isToday?C.text:"#2a2a2a",fontSize:9,fontWeight:700,marginBottom:5,letterSpacing:0.5,textTransform:"uppercase"}}>${d.label}</div>
-            <div style=${{height:34,borderRadius:8,
-              background:d.color?d.color+"22":"#0e0e0e",
-              border:"1px solid "+(d.isToday?(d.color||"#2a2a2a"):d.color?d.color+"33":"#161616"),
+            <div style=${{
+              color:d.isToday?C.text:"#2e2c28",
+              fontSize:9,fontWeight:700,marginBottom:5,
+              letterSpacing:0.5,textTransform:"uppercase"
+            }}>${d.label}</div>
+            <div style=${{
+              height:36,borderRadius:10,
+              background:d.color?d.color+"1a":C.surface,
+              border:"1px solid "+(d.color?d.color+"33":d.isToday?"#2e2c28":"#191714"),
+              boxShadow:d.color?"0 0 10px "+d.color+"22":"0 1px 4px rgba(0,0,0,0.3)",
               display:"flex",alignItems:"center",justifyContent:"center",
-              cursor:(!d.color&&!d.isToday)?"pointer":"default"}}>
+              cursor:(!d.color&&!d.isToday)?"pointer":"default",
+              transition:"all 0.15s"
+            }}>
               ${d.color
-                ?html`<div style=${{width:7,height:7,borderRadius:"50%",background:d.color,boxShadow:"0 0 6px "+d.color+"88"}}/>`
-                :d.isToday?html`<div style=${{width:4,height:4,borderRadius:"50%",background:"#2a2a2a"}}/>`:html`<div style=${{color:"#1e1e1e",fontSize:14,lineHeight:1}}>+</div>`
+                ?html`<div style=${{width:8,height:8,borderRadius:"50%",background:d.color,boxShadow:"0 0 10px "+d.color}}/>`
+                :d.isToday
+                  ?html`<div style=${{width:4,height:4,borderRadius:"50%",background:"#2e2c28"}}/>`
+                  :html`<div style=${{color:"#222",fontSize:13,lineHeight:1,fontWeight:300}}>+</div>`
               }
             </div>
           </div>
         `)}
       </div>
-      <div style=${{color:"#1e1e1e",fontSize:10,textAlign:"center",marginTop:6}}>tap a past day to mark it</div>
+      <div style=${{color:"#1e1c18",fontSize:10,textAlign:"center",marginTop:7,letterSpacing:0.5}}>tap any past day to mark it</div>
     </div>
 
     ${sessions.length>0&&html`
       <div style=${{margin:"0 18px 20px",display:"flex",gap:8}}>
-        ${[{label:"Sessions",val:sessions.length},{label:"PRs",val:Object.keys(prs).length}].map((s,i)=>html`
-          <div key=${i} style=${{flex:1,background:C.surface,borderRadius:12,padding:"13px 14px",border:"1px solid "+C.border}}>
-            <div style=${{color:C.green,fontSize:22,fontWeight:800,lineHeight:1}}>${s.val}</div>
-            <div style=${{color:"#333",fontSize:10,marginTop:3,fontWeight:700,letterSpacing:1,textTransform:"uppercase"}}>${s.label}</div>
+        ${[{label:"sessions",val:sessions.length},{label:"PRs",val:Object.keys(prs).length}].map((s,i)=>html`
+          <div key=${i} style=${{flex:1,background:C.surface,borderRadius:14,padding:"14px",border:"1px solid "+C.border,boxShadow:"0 2px 8px rgba(0,0,0,0.3)"}}>
+            <div style=${{color:C.green,fontSize:24,fontWeight:800,lineHeight:1,letterSpacing:-1}}>${s.val}</div>
+            <div style=${{color:"#2e2c28",fontSize:10,marginTop:4,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>${s.label}</div>
           </div>
         `)}
         ${lastSession&&html`
-          <div style=${{flex:2,background:C.surface,borderRadius:12,padding:"13px 14px",border:"1px solid "+C.border,overflow:"hidden"}}>
-            <div style=${{color:"#333",fontSize:10,fontWeight:700,letterSpacing:1,textTransform:"uppercase",marginBottom:3}}>Last</div>
-            <div style=${{display:"flex",alignItems:"center",gap:7}}>
-              <div style=${{width:6,height:6,borderRadius:"50%",background:lastSession.color,flexShrink:0}}/>
-              <div style=${{color:C.text,fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>${lastSession.label}</div>
+          <div style=${{flex:2,background:"linear-gradient(135deg,"+lastSession.color+"12,"+C.surface+")",borderRadius:14,padding:"14px",border:"1px solid "+lastSession.color+"22",overflow:"hidden",boxShadow:"0 2px 8px rgba(0,0,0,0.3)"}}>
+            <div style=${{color:C.soft,fontSize:10,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginBottom:5}}>Last</div>
+            <div style=${{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+              <div style=${{width:7,height:7,borderRadius:"50%",background:lastSession.color,boxShadow:"0 0 8px "+lastSession.color+"88",flexShrink:0}}/>
+              <div style=${{color:C.text,fontSize:14,fontWeight:800,letterSpacing:-0.3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>${lastSession.label}</div>
             </div>
-            <div style=${{color:"#2a2a2a",fontSize:11,marginTop:1}}>${fmtDate(lastSession.date)}</div>
+            <div style=${{color:"#2e2c28",fontSize:11}}>${fmtDate(lastSession.date)}</div>
           </div>
         `}
       </div>
     `}
 
     <div style=${{padding:"0 18px"}}>
-      <div style=${{color:"#282828",fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>Workouts</div>
-      <div style=${{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+      <div style=${{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
         ${Object.entries(workouts).map(([key,w])=>html`
           <div key=${key} style=${{position:"relative"}}>
-            <button onClick=${()=>startSession(key)} style=${{width:"100%",background:C.surface,border:"1px solid #161616",borderRadius:14,padding:"16px 14px 14px",cursor:"pointer",textAlign:"left",display:"block"}}>
-              <div style=${{width:6,height:6,borderRadius:"50%",background:w.color,marginBottom:10,boxShadow:"0 0 8px "+w.color+"66"}}/>
-              <div style=${{color:C.text,fontSize:15,fontWeight:800,marginBottom:2}}>${w.label}</div>
-              <div style=${{color:"#3a3a3a",fontSize:11,lineHeight:1.4}}>${w.sub}</div>
+            <button onClick=${()=>startSession(key)} style=${{
+              width:"100%",
+              background:"linear-gradient(145deg, "+w.color+"0f 0%, "+C.surface+" 60%)",
+              border:"1px solid "+w.color+"22",
+              borderRadius:18,padding:"18px 16px 16px",
+              cursor:"pointer",textAlign:"left",display:"block",
+              boxShadow:"0 2px 12px rgba(0,0,0,0.4)"
+            }}>
+              <div style=${{
+                width:10,height:10,borderRadius:"50%",
+                background:w.color,marginBottom:12,
+                boxShadow:"0 0 14px "+w.color+"88"
+              }}/>
+              <div style=${{color:C.text,fontSize:16,fontWeight:800,marginBottom:3,letterSpacing:-0.3}}>${w.label}</div>
+              <div style=${{color:C.soft,fontSize:11,lineHeight:1.5}}>${w.sub}</div>
             </button>
-            <button onClick=${()=>openEdit(key)} style=${{position:"absolute",top:10,right:10,background:"none",border:"none",color:"#282828",cursor:"pointer",fontSize:12,padding:2,lineHeight:1}}>✏</button>
+            <button onClick=${()=>openEdit(key)} style=${{
+              position:"absolute",top:11,right:11,
+              background:"rgba(0,0,0,0.3)",border:"none",
+              borderRadius:6,color:"#333",cursor:"pointer",
+              fontSize:11,padding:"3px 6px",lineHeight:1
+            }}>✏</button>
           </div>
         `)}
-        <button onClick=${()=>openEdit(null)} style=${{background:"#0a0a0a",border:"1px dashed #1e1e1e",borderRadius:14,padding:"16px 14px",cursor:"pointer",display:"flex",flexDirection:"column",justifyContent:"center",alignItems:"center",minHeight:90}}>
-          <div style=${{color:"#222",fontSize:24,marginBottom:2,lineHeight:1}}>+</div>
-          <div style=${{color:"#222",fontSize:11,fontWeight:600}}>New workout</div>
+        <button onClick=${()=>openEdit(null)} style=${{
+          background:"transparent",
+          border:"1px dashed #1e1c18",
+          borderRadius:18,padding:"18px 16px",
+          cursor:"pointer",display:"flex",
+          flexDirection:"column",justifyContent:"center",
+          alignItems:"center",minHeight:100,gap:4
+        }}>
+          <div style=${{color:"#252320",fontSize:26,lineHeight:1}}>+</div>
+          <div style=${{color:"#252320",fontSize:11,fontWeight:600}}>New workout</div>
         </button>
       </div>
 
-      <div style=${{display:"flex",gap:8,marginTop:4}}>
-        <button onClick=${()=>setView("prs")} style=${{flex:1,background:C.surface,border:"1px solid #161616",borderRadius:12,padding:"14px 10px",cursor:"pointer",textAlign:"center"}}>
-          <div style=${{fontSize:16,marginBottom:3}}>🏆</div>
-          <div style=${{color:"#3a3a3a",fontSize:11,fontWeight:700}}>PRs</div>
-        </button>
-        <button onClick=${()=>setView("history")} style=${{flex:1,background:C.surface,border:"1px solid #161616",borderRadius:12,padding:"14px 10px",cursor:"pointer",textAlign:"center"}}>
-          <div style=${{fontSize:16,marginBottom:3}}>📋</div>
-          <div style=${{color:"#3a3a3a",fontSize:11,fontWeight:700}}>History</div>
-        </button>
-        <button onClick=${()=>{const n=new Date();setCalMonth({y:n.getFullYear(),m:n.getMonth()});setView("calendar");}} style=${{flex:1,background:C.surface,border:"1px solid #161616",borderRadius:12,padding:"14px 10px",cursor:"pointer",textAlign:"center"}}>
-          <div style=${{fontSize:16,marginBottom:3}}>📅</div>
-          <div style=${{color:"#3a3a3a",fontSize:11,fontWeight:700}}>Calendar</div>
-        </button>
-        <button onClick=${()=>setView("backup")} style=${{flex:1,background:C.surface,border:"1px solid #161616",borderRadius:12,padding:"14px 10px",cursor:"pointer",textAlign:"center"}}>
-          <div style=${{fontSize:16,marginBottom:3}}>💾</div>
-          <div style=${{color:"#3a3a3a",fontSize:11,fontWeight:700}}>Backup</div>
-        </button>
+      <div style=${{display:"flex",gap:8,marginTop:2}}>
+        ${[
+          {icon:"🏆",label:"PRs",action:()=>setView("prs")},
+          {icon:"📋",label:"History",action:()=>setView("history")},
+          {icon:"📅",label:"Calendar",action:()=>{const n=new Date();setCalMonth({y:n.getFullYear(),m:n.getMonth()});setView("calendar");}},
+          {icon:"💾",label:"Backup",action:()=>setView("backup")},
+        ].map(({icon,label,action})=>html`
+          <button onClick=${action} style=${{
+            flex:1,
+            background:C.surface,
+            border:"1px solid "+C.border,
+            borderRadius:14,padding:"13px 6px",
+            cursor:"pointer",textAlign:"center",
+            boxShadow:"0 1px 6px rgba(0,0,0,0.3)"
+          }}>
+            <div style=${{fontSize:17,marginBottom:4}}>${icon}</div>
+            <div style=${{color:C.soft,fontSize:10,fontWeight:600,letterSpacing:0.3}}>${label}</div>
+          </button>
+        `)}
       </div>
     </div>
   </div>`;
