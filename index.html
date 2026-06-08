@@ -1,0 +1,1377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>The Swoly Bible</title>
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{
+  background:#07070d;
+  font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text','Helvetica Neue',sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+#stars-canvas{position:fixed;inset:0;pointer-events:none;z-index:0;}
+#app{position:relative;z-index:1;}
+input,textarea,button{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text','Helvetica Neue',sans-serif;}
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
+input[type=number]{-moz-appearance:textfield;}
+input[type=date]::-webkit-calendar-picker-indicator{display:none;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.45;}}
+button{-webkit-tap-highlight-color:transparent;}
+</style>
+</head>
+<body>
+<canvas id="stars-canvas"></canvas>
+<div id="app"></div>
+<script>
+(function(){
+  const canvas=document.getElementById('stars-canvas');
+  const ctx=canvas.getContext('2d');
+  let stars=[],W,H;
+  function resize(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;}
+  function initStars(){
+    stars=[];
+    const count=Math.floor((W*H)/3000);
+    for(let i=0;i<count;i++){
+      stars.push({
+        x:Math.random()*W, y:Math.random()*H,
+        r:Math.random()*1.6+0.3,
+        alpha:Math.random()*0.6+0.3,
+        speed:Math.random()*0.008+0.003,
+        phase:Math.random()*Math.PI*2,
+        green:Math.random()<0.04,
+      });
+    }
+  }
+  let frame=0;
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    const t=frame*0.01;
+    for(const s of stars){
+      const twinkle=s.alpha*(0.6+0.4*Math.sin(t*s.speed*100+s.phase));
+      ctx.beginPath();
+      ctx.arc(s.x,s.y,s.r,0,Math.PI*2);
+      ctx.fillStyle=s.green?`rgba(184,240,74,${twinkle})`:`rgba(255,255,255,${twinkle})`;
+      ctx.fill();
+    }
+    frame++;
+    requestAnimationFrame(draw);
+  }
+  resize();initStars();draw();
+  window.addEventListener('resize',()=>{resize();initStars();});
+})();
+</script>
+<script type="module">
+import{h,render}from'https://esm.sh/preact@10.19.3';
+import{useState,useEffect}from'https://esm.sh/preact@10.19.3/hooks';
+import htm from'https://esm.sh/htm@3.1.1';
+const html=htm.bind(h);
+
+// ══════ FIREBASE ══════
+const FIREBASE_CONFIG = {
+  apiKey:            "AIzaSyB4IYYjEW12xCXpWuJi6SAnQ1fHoaRhrQw",
+  authDomain:        "swoly-bible.firebaseapp.com",
+  projectId:         "swoly-bible",
+  storageBucket:     "swoly-bible.firebasestorage.app",
+  messagingSenderId: "929657540762",
+  appId:             "1:929657540762:web:eec909627e0d7e66904f23",
+  measurementId:     "G-FW53Z8MVKL"
+};
+
+let db = null;
+let _firestoreReady = false;
+let _unsubWorkouts = null;
+let _unsubSessions = null;
+let _unsubPRs = null;
+
+function _initFirestore(onWorkouts, onSessions, onPRs) {
+  try {
+    if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+    db = firebase.firestore();
+    _firestoreReady = true;
+
+    _unsubWorkouts = db.collection('swoly').doc('workouts')
+      .onSnapshot(snap => {
+        if (!snap.exists) return;
+        const w = snap.data().workouts;
+        if (w) { localStorage.setItem('wt-w', JSON.stringify(w)); onWorkouts(w); }
+      }, err => console.warn('Firestore workouts error:', err));
+
+    _unsubSessions = db.collection('swoly').doc('sessions')
+      .onSnapshot(snap => {
+        if (!snap.exists) return;
+        const s = snap.data().sessions;
+        if (s) { localStorage.setItem('wt-s', JSON.stringify(s)); onSessions(s); }
+      }, err => console.warn('Firestore sessions error:', err));
+
+    _unsubPRs = db.collection('swoly').doc('prs')
+      .onSnapshot(snap => {
+        if (!snap.exists) return;
+        const p = snap.data().prs;
+        if (p) { localStorage.setItem('wt-p', JSON.stringify(p)); onPRs(p); }
+      }, err => console.warn('Firestore prs error:', err));
+
+  } catch(e) {
+    console.warn('Firebase init failed, using localStorage only:', e);
+  }
+}
+
+function _saveWorkouts(w) {
+  localStorage.setItem('wt-w', JSON.stringify(w));
+  if (_firestoreReady && db) db.collection('swoly').doc('workouts').set({workouts:w})
+    .catch(e => console.warn('save workouts failed:', e));
+}
+function _saveSessions(s) {
+  localStorage.setItem('wt-s', JSON.stringify(s));
+  if (_firestoreReady && db) db.collection('swoly').doc('sessions').set({sessions:s})
+    .catch(e => console.warn('save sessions failed:', e));
+}
+function _savePRs(p) {
+  localStorage.setItem('wt-p', JSON.stringify(p));
+  if (_firestoreReady && db) db.collection('swoly').doc('prs').set({prs:p})
+    .catch(e => console.warn('save prs failed:', e));
+}
+
+// ══════ APP ══════
+
+const C={bg:"#07070d",surface:"#12111a",border:"#1e1c2a",border2:"#252235",text:"#ede9e3",soft:"#525060",dim:"#6b6880",muted:"#1a1825",green:"#b8f04a",gold:"#f0c84a"};
+const COLORS=["#4af0c8","#f04a8a","#b8f04a","#a78bfa","#f0924a","#4a9af0","#f0d44a","#e06060"];
+const DEFAULT_WORKOUTS={
+  push:{label:"Push",sub:"Chest · Shoulders · Tris",color:"#4a9af0",exercises:["DB Chest Press","Incline DB Press","DB Chest Fly","DB Shoulder Press","Lateral Raise","Tricep Pushdown","Overhead Tricep Extension","Push-Up"]},
+  pull:{label:"Pull",sub:"Back · Biceps · Rear Delts",color:"#f04a8a",exercises:["Pull-Up","DB Row","Seated Cable Row","Face Pull","Incline DB Curl","Hammer Curl","Band Pull-Apart"]},
+  legs:{label:"Legs",sub:"Quads · Hams · Glutes",color:"#f0924a",exercises:["Goblet Squat","Romanian Deadlift","Reverse Lunge","Leg Press","Leg Curl","Hip Thrust","Calf Raise"]},
+  full:{label:"Full Body",sub:"Push · Pull · Legs",color:"#b8f04a",exercises:["Goblet Squat","Romanian Deadlift","DB Chest Press","DB Row","DB Shoulder Press","Lateral Raise","Hammer Curl","Tricep Pushdown"]},
+};
+
+const FORM_TIPS={
+  "DB Chest Press":        "Feet flat, arch natural. Lower DBs to chest level, elbows ~45° from torso. Press up and slightly in — don't lock out hard at top.",
+  "Incline DB Press":      "Bench at 30–45°. Same as flat press but targets upper chest. Keep shoulder blades pinched back into the pad throughout.",
+  "DB Chest Fly":          "Slight bend in elbows, keep it fixed. Lower in a wide arc until you feel a chest stretch, then squeeze back up. This is a stretch movement — go light.",
+  "DB Shoulder Press":     "Sit upright, core tight. Start with DBs at ear height, elbows slightly forward (not flared straight out). Press up, don't fully lock out.",
+  "Lateral Raise":         "Slight bend in elbows, lead with your elbows not your hands. Raise to shoulder height only. Go lighter than you think — most people cheat this one.",
+  "Tricep Pushdown":       "Elbows glued to your sides — they don't move. Push down and fully extend, squeeze at the bottom. Hinge only at the elbow.",
+  "Overhead Tricep Extension": "Keep elbows pointing forward, not flaring out. Lower the weight behind your head, then extend. Feel the stretch at the bottom.",
+  "Push-Up":               "Hands slightly wider than shoulder-width. Body is a plank — don't let hips sag or pike. Lower chest to floor, elbows ~45° from torso.",
+  "Pull-Up":               "Full hang to start. Pull elbows down and back toward your hips — think about bending a bar over your back. Chin clears bar, then controlled descent.",
+  "DB Row":                "Brace on a bench, back flat and parallel to floor. Pull the DB to your hip, not your shoulder. Lead with your elbow. Full stretch at the bottom.",
+  "Seated Cable Row":      "Sit tall, slight knee bend. Pull to your lower chest/upper stomach. Squeeze shoulder blades together at the end — don't lean way back.",
+  "Face Pull":             "Cable at forehead height. Pull the rope to your face, elbows flaring high and wide. Focus on external rotation — great for shoulder health.",
+  "Incline DB Curl":       "Lay back on incline bench, arms hang straight down. Curl up without swinging. The stretch at the bottom is the whole point of this variation.",
+  "Hammer Curl":           "Neutral grip (thumbs up), keep elbows at your sides. Curl up, squeeze at top. Hits the brachialis and forearm more than a standard curl.",
+  "Band Pull-Apart":       "Hold band at shoulder width, arms straight out in front. Pull apart until band touches your chest. Squeeze shoulder blades. Great for posture.",
+  "Goblet Squat":          "Hold DB at chest, feet shoulder-width with slight toe flare. Squat down keeping chest tall and elbows inside knees. Drive through the whole foot to stand.",
+  "Romanian Deadlift":     "Soft bend in knees, hinge at hips — push them back. Lower the weight along your legs until you feel a hamstring stretch. Drive hips forward to come up.",
+  "Reverse Lunge":         "Step back, lower back knee toward floor. Front shin stays vertical — knee doesn't cave in. Push through front heel to return. More stable than forward lunge.",
+  "Leg Press":             "Feet shoulder-width, mid-plate. Lower until 90° at the knee — don't let lower back round off the pad. Press through heels, don't lock knees at top.",
+  "Leg Curl":              "Lying face down — curl heels toward your glutes. Squeeze at the top. Go slow on the way down. Keep hips pressed into the pad.",
+  "Hip Thrust":            "Upper back on bench, feet flat and close to body. Drive hips up by squeezing glutes hard at the top. Don't hyperextend your lower back.",
+  "Calf Raise":            "Full range — all the way up on toes, all the way down for a stretch. Go slow. Calves respond to time under tension more than heavy weight.",
+  "Dead Bug":              "Lower back pressed flat to floor the whole time. Extend opposite arm and leg, bring back slowly. The second your back lifts, you've gone too far.",
+  "Plank":                 "Elbows under shoulders, body rigid like a board. Squeeze glutes and abs. Don't let hips pike or sag. Breathe.",
+};
+const DAYS=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+
+const QUOTES=[
+  "the body achieves what the mind believes.",
+  "every rep is a vote for who you're becoming.",
+  "progress, not perfection.",
+  "show up. the rest follows.",
+  "you don't find willpower. you build it.",
+  "the pain you feel today is the strength you'll feel tomorrow.",
+  "small steps, taken consistently, move mountains.",
+  "discipline is just choosing between what you want now and what you want most.",
+  "the goal isn't to be better than anyone else. it's to be better than you were yesterday.",
+  "your only competition is the person you were last week.",
+  "earned, not given.",
+  "the work is the way.",
+  "intensity is a choice. make it every time.",
+  "you are always one workout away from a better mood.",
+  "consistency will always beat intensity.",
+  "the iron never lies.",
+  "fall in love with the process and the results will come.",
+  "be the person your future self will thank.",
+  "hard work compounds. start today.",
+  "evolution isn't an event. it's a habit.",
+  "silence the doubt. move the weight.",
+  "what you do when no one's watching defines you.",
+  "champions are made in the moments they want to quit.",
+  "the version of you that you want to be is built one rep at a time.",
+  "your body hears everything your mind says. speak strength.",
+  "do it for the person you want to become.",
+  "grit is a muscle. train it.",
+  "the comeback is always stronger than the setback.",
+  "one more rep. one more step. one more day.",
+  "built with intention.",
+];
+const todayQuote=()=>{
+  const d=new Date();
+  const idx=(d.getFullYear()*10000+d.getMonth()*100+d.getDate())%QUOTES.length;
+  return QUOTES[idx];
+};
+const todayISO=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");};
+const fmtDate=iso=>new Date(iso+"T12:00:00").toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"});
+function load(k){try{const v=localStorage.getItem(k);return v?JSON.parse(v):null;}catch{return null;}}
+
+function SignIn() {
+  const [mode,setMode]=useState("signin");
+  const [email,setEmail]=useState("");
+  const [password,setPassword]=useState("");
+  const [error,setError]=useState(null);
+  const [busy,setBusy]=useState(false);
+
+  function friendlyErr(code) {
+    if (!code) return "Something went wrong.";
+    if (code.includes("user-not-found")||code.includes("wrong-password")||code.includes("invalid-credential")) return "Incorrect email or password.";
+    if (code.includes("email-already")) return "An account with that email already exists.";
+    if (code.includes("weak-password")) return "Password must be at least 6 characters.";
+    if (code.includes("invalid-email")) return "Invalid email address.";
+    if (code.includes("popup-closed")||code.includes("cancelled")) return null;
+    return "Something went wrong. Try again.";
+  }
+
+  async function withGoogle() {
+    setBusy(true); setError(null);
+    try { await _signInGoogle(); }
+    catch(e) { const m=friendlyErr(e.code); if(m)setError(m); setBusy(false); }
+  }
+  async function withEmail(e) {
+    if(e) e.preventDefault();
+    if(!email.trim()||!password){ setError("Enter your email and password."); return; }
+    setBusy(true); setError(null);
+    try {
+      if(mode==="signup") await _signUpEmail(email,password);
+      else await _signInEmail(email,password);
+    } catch(err) { setError(friendlyErr(err.code)); setBusy(false); }
+  }
+
+  const inp={width:"100%",background:"#0f0e14",border:"1px solid #1a1825",borderRadius:12,
+    color:C.text,fontSize:15,padding:"14px 16px",outline:"none",boxSizing:"border-box",
+    fontFamily:"inherit",WebkitAppearance:"none"};
+
+  return html`<div style=${{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"0 28px 40px"}}>
+    <div style=${{width:"100%",maxWidth:320}}>
+
+      <div style=${{textAlign:"center",marginBottom:40}}>
+        <div style=${{color:C.text,fontSize:30,fontWeight:200,letterSpacing:5,textTransform:"uppercase",lineHeight:1.1}}>The Swoly Bible</div>
+        <div style=${{color:"rgba(184,240,74,0.5)",fontSize:10,fontWeight:400,letterSpacing:5,textTransform:"uppercase",marginTop:8}}>Mika Glo</div>
+        <div style=${{width:40,height:1,background:"linear-gradient(to right,transparent,rgba(184,240,74,0.55),transparent)",margin:"14px auto 0"}}/>
+      </div>
+
+      <button onClick=${withGoogle} disabled=${busy}
+        style=${{width:"100%",padding:"14px 18px",background:"#fff",border:"none",borderRadius:14,
+          color:"#1a1a1a",fontWeight:700,fontSize:15,cursor:busy?"default":"pointer",
+          display:"flex",alignItems:"center",justifyContent:"center",gap:12,marginBottom:18,
+          opacity:busy?0.6:1,minHeight:52,WebkitTapHighlightColor:"transparent"}}>
+        <svg width="18" height="18" viewBox="0 0 18 18">
+          <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/>
+          <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/>
+          <path fill="#FBBC05" d="M3.964 10.707A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.707V4.961H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z"/>
+          <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.961L3.964 6.293C4.672 4.166 6.656 3.58 9 3.58z"/>
+        </svg>
+        Continue with Google
+      </button>
+
+      <div style=${{display:"flex",alignItems:"center",gap:12,marginBottom:18}}>
+        <div style=${{flex:1,height:1,background:C.border}}/>
+        <span style=${{color:C.dim,fontSize:11,letterSpacing:1}}>or</span>
+        <div style=${{flex:1,height:1,background:C.border}}/>
+      </div>
+
+      <form onSubmit=${withEmail} style=${{display:"contents"}}>
+        <input value=${email} onInput=${e=>setEmail(e.target.value)}
+          placeholder="Email" type="email" autocomplete="email"
+          style=${{...inp,marginBottom:10}}/>
+        <input value=${password} onInput=${e=>setPassword(e.target.value)}
+          placeholder="Password" type="password"
+          autocomplete=${mode==="signup"?"new-password":"current-password"}
+          style=${{...inp,marginBottom:error?10:16}}/>
+
+        ${error&&html`<div style=${{color:"#e06060",fontSize:13,marginBottom:12,textAlign:"center",lineHeight:1.4}}>${error}</div>`}
+
+        <button type="submit" disabled=${busy}
+          style=${{width:"100%",padding:"15px",background:C.green,border:"none",borderRadius:14,
+            color:"#0a0a0a",fontWeight:800,fontSize:15,cursor:busy?"default":"pointer",
+            marginBottom:12,opacity:busy?0.6:1,minHeight:52,letterSpacing:0.2}}>
+          ${busy?"...":(mode==="signup"?"Create Account":"Sign In")}
+        </button>
+      </form>
+
+      <button onClick=${()=>{setMode(m=>m==="signin"?"signup":"signin");setError(null);}}
+        style=${{width:"100%",padding:"11px",background:"none",border:"none",color:C.soft,fontSize:13,cursor:"pointer",letterSpacing:0.1}}>
+        ${mode==="signin"?"Don't have an account? Create one →":"Already have an account? Sign in →"}
+      </button>
+
+    </div>
+  </div>`;
+}
+
+function SetLogger({sets,onAdd,onRemove,color,prevPR}){
+  const[w,setW]=useState("");
+  const[r,setR]=useState("");
+  const[unit,setUnit]=useState("lbs"); // "lbs" | "bw" | "sec"
+  const isSec=unit==="sec";
+  const isBW=unit==="bw";
+
+  function add(){
+    if(isSec){
+      const secs=parseInt(w)||0;
+      if(!secs)return;
+      onAdd({weight:0,reps:secs,sec:true});
+      setW("");
+    } else if(isBW){
+      const reps=parseInt(r)||0;
+      if(!reps)return;
+      onAdd({weight:0,reps});
+      setW("");setR("");
+    } else {
+      const weight=parseFloat(w);
+      if(!w||isNaN(weight))return;
+      const reps=parseInt(r)||0;
+      if(!reps)return;
+      onAdd({weight,reps});
+      setW("");setR("");
+    }
+  }
+  function repeatLast(){
+    if(!sets.length)return;
+    onAdd({...sets[sets.length-1]});
+  }
+  const fmtSet=s=>s.sec?s.reps+"s":(s.weight>0?s.weight+"lb":"BW")+" ×"+s.reps;
+  const bestNow=sets.filter(s=>!s.sec).length?Math.max(...sets.filter(s=>!s.sec).map(s=>s.weight)):null;
+  const isNewPR=bestNow!==null&&(prevPR===undefined||bestNow>(prevPR?.weight??-1));
+
+  const unitBtn=(label,val)=>html`
+    <button onClick=${()=>{setUnit(val);setW("");setR("");}}
+      style=${{flex:1,padding:"6px 0",fontSize:11,fontWeight:600,cursor:"pointer",
+        background:unit===val?color+"22":"transparent",
+        color:unit===val?color:C.soft,
+        border:"none",borderBottom:"2px solid "+(unit===val?color:"transparent"),
+        transition:"all 0.15s"}}>
+      ${label}
+    </button>`;
+
+  return html`<div>
+    ${/* Unit selector */null}
+    <div style=${{display:"flex",background:"#0d0d0d",borderRadius:8,marginBottom:10,overflow:"hidden",border:"1px solid #1e1e1e"}}>
+      ${unitBtn("lbs","lbs")}
+      ${unitBtn("bodyweight","bw")}
+      ${unitBtn("seconds","sec")}
+    </div>
+
+    ${sets.length>0&&html`<div style=${{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
+      ${sets.map((s,i)=>html`<div key=${i} style=${{display:"flex",alignItems:"center",background:"#181818",border:"1px solid #2a2a2a",borderRadius:8,overflow:"hidden"}}>
+        <span style=${{padding:"6px 10px",fontSize:13,color:C.text,fontWeight:700}}>${s.sec?s.reps+"s":s.weight>0?s.weight+"lb":"BW"}</span>
+        ${!s.sec&&html`<span style=${{color:C.soft,fontSize:13,paddingRight:6}}>×${s.reps}</span>`}
+        ${isNewPR&&!s.sec&&i===sets.length-1&&html`<span style=${{color:C.gold,fontSize:9,fontWeight:800,paddingRight:6}}>PR</span>`}
+        <button onClick=${()=>onRemove(i)} style=${{background:"none",border:"none",borderLeft:"1px solid #2a2a2a",color:C.dim,cursor:"pointer",padding:"8px 11px",fontSize:12,lineHeight:1,minHeight:36}}>✕</button>
+      </div>`)}
+    </div>`}
+
+    <div style=${{display:"flex",gap:6}}>
+      ${!isBW&&html`
+        <input value=${w} onInput=${e=>setW(e.target.value)}
+          placeholder=${isSec?"duration (sec)":"weight (lb)"}
+          type="number" inputMode="decimal"
+          style=${{flex:1,background:"#141414",border:"1px solid #252525",borderRadius:8,color:C.text,fontSize:15,padding:"10px 12px",outline:"none",minWidth:0}}/>
+      `}
+      ${!isSec&&html`
+        <input value=${r} onInput=${e=>setR(e.target.value)} placeholder="reps" type="number" inputMode="numeric"
+          style=${{width:isBW?"100%":"70px",flex:isBW?1:0,background:"#141414",border:"1px solid #252525",borderRadius:8,color:C.text,fontSize:15,padding:"10px 8px",outline:"none",textAlign:"center"}}/>
+      `}
+      <button onClick=${add} style=${{background:color,border:"none",borderRadius:8,color:"#0a0a0a",fontWeight:900,fontSize:20,width:44,cursor:"pointer",flexShrink:0}}>+</button>
+    </div>
+
+    ${sets.length>0&&html`
+      <button onClick=${repeatLast}
+        style=${{marginTop:8,width:"100%",padding:"8px",background:"#141414",border:"1px dashed #2a2a2a",borderRadius:8,color:C.soft,fontSize:12,cursor:"pointer",fontWeight:600}}>
+        ↻ repeat last set (${fmtSet(sets[sets.length-1])})
+      </button>
+    `}
+  </div>`;
+}
+
+function App(){
+  const[view,setView]=useState("home");
+  const[workouts,setWorkouts]=useState(null);
+  const[sessions,setSessions]=useState([]);
+  const[prs,setPRs]=useState({});
+  const[week,setWeek]=useState({});
+  const[loading,setLoading]=useState(true);
+  const[sKey,setSKey]=useState(null);
+  const[sExList,setSExList]=useState([]);
+  const[sSets,setSSets]=useState({});
+  const[sNote,setSNote]=useState("");
+  const[restSince,setRestSince]=useState(null);
+  const[restTarget,setRestTarget]=useState(90);
+  const[restDisplay,setRestDisplay]=useState(null);
+  const[restDone,setRestDone]=useState(false);
+  const[sDone,setSDone]=useState(false);
+  const[sNewPRs,setSNewPRs]=useState([]);
+  const[sAddEx,setSAddEx]=useState("");
+  const[eKey,setEKey]=useState(null);
+  const[eData,setEData]=useState(null);
+  const[eNewEx,setENewEx]=useState("");
+  const[eConfirm,setEConfirm]=useState(false);
+  const[prEdit,setPrEdit]=useState(null);
+  const[sConfirmExit,setSConfirmExit]=useState(false);
+  const[calViewSession,setCalViewSession]=useState(null);
+  const[sDate,setSDate]=useState(todayISO());
+  const[calMonth,setCalMonth]=useState(()=>{const n=new Date();return{y:n.getFullYear(),m:n.getMonth()};});
+  const[calPickDate,setCalPickDate]=useState(null);
+  const[calMarkKey,setCalMarkKey]=useState(null);
+  const[activeTip,setActiveTip]=useState(null);
+  const[histDeleteId,setHistDeleteId]=useState(null);
+  const[histOpenMonths,setHistOpenMonths]=useState({});
+  const[exportDone,setExportDone]=useState(false);
+  const[importStatus,setImportStatus]=useState(null);
+  const[importPending,setImportPending]=useState(null);
+
+  useEffect(()=>{
+    const w=load("wt-w")||DEFAULT_WORKOUTS;
+    const s=load("wt-s")||[];
+    const p=load("wt-p")||{};
+    const wk=load("wt-wk")||{};
+    setWorkouts(w);setSessions(s);setPRs(p);setWeek(wk);
+    const active=load("wt-active");
+    if(active&&active.sKey){
+      setSKey(active.sKey);setSDate(active.sDate||todayISO());
+      setSExList(active.sExList||[]);setSSets(active.sSets||{});
+      setSNote(active.sNote||"");setSDone(false);
+      setView("session");
+    }
+    setLoading(false);
+    _initFirestore(
+      w => setWorkouts(w),
+      s => setSessions(s),
+      p => setPRs(p)
+    );
+  },[]);
+
+  function _saveActive(key,date,exList,sets,note){
+    localStorage.setItem('wt-active',JSON.stringify({sKey:key,sDate:date,sExList:exList,sSets:sets,sNote:note}));
+  }
+  function _clearActive(){localStorage.removeItem('wt-active');}
+
+  const REST_TARGETS=[10,30,60,90,120,180];
+  function cycleRestTarget(){
+    if(restSince)return; // don't change target mid-rest
+    setRestTarget(t=>{const i=REST_TARGETS.indexOf(t);return REST_TARGETS[(i+1)%REST_TARGETS.length];});
+  }
+  function fmtRestTarget(s){return s>=60?Math.floor(s/60)+"m"+(s%60?s%60+"s":""):s+"s";}
+
+  useEffect(()=>{
+    if(!restSince){setRestDisplay(null);setRestDone(false);return;}
+    setRestDone(false);
+    const iv=setInterval(()=>{
+      const elapsed=Math.floor((Date.now()-restSince)/1000);
+      const remaining=restTarget-elapsed;
+      if(remaining<=0){
+        setRestDisplay("GO");
+        setRestDone(true);
+      } else {
+        const m=Math.floor(remaining/60);
+        const s=remaining%60;
+        setRestDisplay((m>0?m+":":"")+(m>0&&s<10?"0":"")+s);
+        setRestDone(false);
+      }
+    },1000);
+    return ()=>clearInterval(iv);
+  },[restSince,restTarget]);
+
+  function markDay(key,date){
+    const w=workouts[key];
+    const session={id:Date.now(),date,key,label:w.label,color:w.color,exercises:[],sets:{},note:"marked",newPRs:[]};
+    const updS=[session,...sessions];
+    setSessions(updS);_saveSessions(updS);
+    setCalPickDate(null);setCalMarkKey(null);
+  }
+
+  function startSession(key,date){
+    const d=date||todayISO();
+    const exList=[...workouts[key].exercises];
+    setSKey(key);setSDate(d);setSExList(exList);
+    setSSets({});setSNote("");setSDone(false);setSNewPRs([]);setSAddEx("");setRestSince(null);setRestDone(false);
+    _saveActive(key,d,exList,{},"");
+    setCalPickDate(null);setView("session");
+  }
+  function addSet(name,set){
+    setSSets(p=>{const n={...p,[name]:[...(p[name]||[]),set]};_saveActive(sKey,sDate,sExList,n,sNote);return n;});
+  }
+  function removeSet(name,idx){
+    setSSets(p=>{const c=[...(p[name]||[])];c.splice(idx,1);const n={...p,[name]:c};_saveActive(sKey,sDate,sExList,n,sNote);return n;});
+  }
+  function addExToSession(){
+    const t=sAddEx.trim();if(!t)return;
+    setSExList(p=>{const n=[...p,t];_saveActive(sKey,sDate,n,sSets,sNote);return n;});
+    setSAddEx("");
+  }
+
+  function finishSession(){
+    const newPRList=[];const updatedPRs={...prs};
+    sExList.forEach(name=>{
+      const sets=sSets[name]||[];if(!sets.length)return;
+      const best=Math.max(...sets.map(s=>s.weight));
+      const prev=prs[name];
+      if(prev===undefined||best>prev.weight){
+        updatedPRs[name]={weight:best,reps:sets.find(s=>s.weight===best)?.reps||0,date:todayISO()};
+        if(prev!==undefined)newPRList.push(name);
+      }
+    });
+    const session={id:Date.now(),date:sDate,key:sKey,label:workouts[sKey].label,color:workouts[sKey].color,exercises:sExList,sets:sSets,note:sNote,newPRs:newPRList};
+    const updS=[session,...sessions];const updW={...week,[sDate]:sKey};
+    setSessions(updS);setPRs(updatedPRs);setWeek(updW);setSNewPRs(newPRList);setSDone(true);
+    _saveSessions(updS);_savePRs(updatedPRs);localStorage.setItem('wt-wk',JSON.stringify(updW));
+    _clearActive();
+  }
+
+  function openEdit(key){
+    setEKey(key);
+    setEData(key?{...workouts[key],exercises:[...workouts[key].exercises]}:{label:"",sub:"",color:COLORS[0],exercises:[]});
+    setENewEx("");setEConfirm(false);setView("edit");
+  }
+  function saveEdit(){
+    const key=eKey||"w_"+Date.now();
+    const upd={...workouts,[key]:eData};
+    setWorkouts(upd);_saveWorkouts(upd);setView("home");
+  }
+  function deleteWorkout(){
+    const upd={...workouts};delete upd[eKey];
+    setWorkouts(upd);_saveWorkouts(upd);setView("home");
+  }
+  function deletePR(name){const upd={...prs};delete upd[name];setPRs(upd);_savePRs(upd);}
+  function updatePR(name,weight,reps){const upd={...prs,[name]:{weight:parseFloat(weight)||0,reps:parseInt(reps)||0,date:prs[name]?.date||todayISO()}};setPRs(upd);_savePRs(upd);setPrEdit(null);}
+
+  function exportData(){
+    const data={workouts,sessions,prs,week,exportedAt:new Date().toISOString()};
+    const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url;a.download="swoly-bible-backup-"+todayISO()+".json";
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setExportDone(true);
+    setTimeout(()=>setExportDone(false),3000);
+  }
+
+  function importData(e){
+    const file=e.target.files[0];if(!file)return;
+    e.target.value="";
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      try{
+        const data=JSON.parse(ev.target.result);
+        if(!data.sessions&&!data.workouts)throw new Error("not a swoly backup");
+        setImportPending(data);
+        setImportStatus("confirm");
+      }catch{
+        setImportStatus("error");
+        setTimeout(()=>setImportStatus(null),4000);
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  function confirmRestore(){
+    const data=importPending;
+    if(!data)return;
+    if(data.sessions){setSessions(data.sessions);_saveSessions(data.sessions);}
+    if(data.prs){setPRs(data.prs);_savePRs(data.prs);}
+    if(data.week){setWeek(data.week);localStorage.setItem('wt-wk',JSON.stringify(data.week));}
+    if(data.workouts){setWorkouts(data.workouts);_saveWorkouts(data.workouts);}
+    setImportPending(null);
+    setImportStatus("success");
+    setTimeout(()=>setImportStatus(null),4000);
+  }
+
+  function deleteSession(id){
+    const target=sessions.find(x=>x.id===id);
+    const u=sessions.filter(x=>x.id!==id);
+    setSessions(u);_saveSessions(u);
+    if(target){
+      const stillHas=u.some(s=>s.date===target.date);
+      if(!stillHas){
+        const updW={...week};delete updW[target.date];
+        setWeek(updW);localStorage.setItem('wt-wk',JSON.stringify(updW));
+      }
+    }
+  }
+
+  const streak=()=>{
+    if(!sessions.length)return 0;
+    const dates=[...new Set(sessions.map(s=>s.date))].sort().reverse();
+    let c=0,d=new Date();
+    for(const dt of dates){const dd=new Date(dt+"T12:00:00");if(Math.round((d-dd)/86400000)<=1){c++;d=dd;}else break;}
+    return c;
+  };
+
+  if(loading||!workouts)return html`<div style=${{background:C.bg,minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}><span style=${{color:"#333",fontSize:13,letterSpacing:2}}>LOADING</span></div>`;
+
+  const wrap={background:"transparent",minHeight:"100vh",maxWidth:480,margin:"0 auto",paddingBottom:80,WebkitFontSmoothing:"antialiased"};
+  const goBack=(to)=>html`<button onClick=${()=>{setEConfirm(false);setView(to);}} style=${{background:"none",border:"none",color:"rgba(255,255,255,0.4)",cursor:"pointer",fontSize:13,padding:"0 0 18px 0",display:"inline-flex",alignItems:"center",gap:5,letterSpacing:0.2}}>
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8L10 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    Back
+  </button>`;
+  const lbl=(txt)=>html`<div style=${{color:C.dim,fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>${txt}</div>`;
+
+  // ── SESSION ──────────────────────────────────────────────────────
+  if(view==="session"&&sKey){
+    const w=workouts[sKey];
+    const started=sExList.filter(n=>(sSets[n]||[]).length>0).length;
+    const totalSets=Object.values(sSets).flat().length;
+    return html`<div style=${wrap}>
+      <div style=${{padding:"14px 18px 12px",borderBottom:"1px solid "+C.border,position:"sticky",top:0,background:"rgba(10,10,10,0.97)",backdropFilter:"blur(8px)",zIndex:10}}>
+        ${sConfirmExit&&html`
+          <div style=${{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 24px"}}>
+            <div style=${{background:"#141414",borderRadius:20,padding:"28px 24px",width:"100%",maxWidth:360,textAlign:"center",border:"1px solid #2a2a2a"}}>
+              <div style=${{color:C.text,fontWeight:800,fontSize:18,marginBottom:6}}>Discard session?</div>
+              <div style=${{color:C.soft,fontSize:13,marginBottom:24}}>Your logged sets won't be saved.</div>
+              <div style=${{display:"flex",gap:10}}>
+                <button onClick=${()=>setSConfirmExit(false)}
+                  style=${{flex:1,padding:"14px",background:"#1e1e1e",border:"none",borderRadius:12,color:C.text,fontWeight:700,fontSize:14,cursor:"pointer"}}>Keep going</button>
+                <button onClick=${()=>{setSConfirmExit(false);_clearActive();setView("home");}}
+                  style=${{flex:1,padding:"14px",background:"#2a1010",border:"1px solid #3a1515",borderRadius:12,color:"#e06060",fontWeight:700,fontSize:14,cursor:"pointer"}}>Discard</button>
+              </div>
+            </div>
+          </div>
+        `}
+        <div style=${{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+          <div style=${{flex:1,minWidth:0}}>
+            <div style=${{color:w.color,fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase",marginBottom:3}}>${w.label}</div>
+            <div style=${{color:C.text,fontSize:19,fontWeight:800,lineHeight:1.2,marginBottom:5}}>${w.sub}</div>
+            <div style=${{display:"flex",alignItems:"center",gap:10}}>
+              <input type="date" value=${sDate} max=${todayISO()} onInput=${e=>setSDate(e.target.value)}
+                style=${{background:"transparent",border:"none",color:"rgba(255,255,255,0.3)",fontSize:11,padding:0,outline:"none",colorScheme:"dark",cursor:"pointer",fontFamily:"inherit"}}/>
+              <span style=${{color:"rgba(255,255,255,0.2)",fontSize:11}}>${started}/${sExList.length} started</span>
+              ${totalSets>0&&html`<span style=${{background:w.color+"22",color:w.color,borderRadius:20,padding:"1px 8px",fontSize:11,fontWeight:700}}>${totalSets} sets</span>`}
+            </div>
+          </div>
+          <div style=${{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:8,paddingTop:2}}>
+            <button onClick=${()=>setSConfirmExit(true)}
+              style=${{background:"none",border:"none",color:"rgba(255,255,255,0.25)",fontSize:18,cursor:"pointer",padding:"0 0 0 12px",lineHeight:1,display:"flex",alignItems:"center"}}>✕</button>
+            ${!sDone&&html`
+              <div style=${{display:"flex",alignItems:"center",gap:6}}>
+                <span style=${{color:"rgba(255,255,255,0.22)",fontSize:9,fontWeight:700,letterSpacing:2,textTransform:"uppercase"}}>REST</span>
+                ${restSince?html`
+                  <div style=${{display:"flex",alignItems:"center",gap:5}}>
+                    <span style=${{
+                      background:restDone?"#2a0a0a":"#0d1a0a",
+                      border:"1px solid "+(restDone?"#7a1a1a":"#1e3a18"),
+                      borderRadius:20,color:restDone?"#e06060":"#7ab860",
+                      fontSize:12,fontWeight:800,padding:"4px 12px",minWidth:52,textAlign:"center",
+                      letterSpacing:0.5,display:"inline-block",
+                      animation:restDone?"pulse 0.6s ease infinite":""
+                    }}>${restDone?"GO":restDisplay}</span>
+                    <button onClick=${()=>{setRestSince(null);setRestDone(false);}}
+                      style=${{background:"none",border:"none",color:"rgba(255,255,255,0.25)",fontSize:16,cursor:"pointer",padding:"2px 4px",lineHeight:1,display:"flex",alignItems:"center"}}>
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                    </button>
+                  </div>
+                `:html`
+                  <div style=${{display:"flex",alignItems:"center",gap:2}}>
+                    <button onClick=${()=>setRestTarget(t=>{const i=REST_TARGETS.indexOf(t);return REST_TARGETS[Math.max(0,i-1)];})}
+                      style=${{background:"none",border:"none",color:"rgba(255,255,255,0.2)",fontSize:16,cursor:"pointer",padding:"3px 6px",lineHeight:1}}>‹</button>
+                    <button onClick=${()=>{setRestSince(Date.now());setRestDone(false);}}
+                      style=${{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:20,
+                        color:"rgba(255,255,255,0.6)",fontSize:11,fontWeight:700,padding:"4px 12px",cursor:"pointer",
+                        letterSpacing:0.3,transition:"all 0.2s"}}>
+                      ${fmtRestTarget(restTarget)}
+                    </button>
+                    <button onClick=${()=>setRestTarget(t=>{const i=REST_TARGETS.indexOf(t);return REST_TARGETS[Math.min(REST_TARGETS.length-1,i+1)];})}
+                      style=${{background:"none",border:"none",color:"rgba(255,255,255,0.2)",fontSize:16,cursor:"pointer",padding:"3px 6px",lineHeight:1}}>›</button>
+                  </div>
+                `}
+              </div>
+            `}
+          </div>
+        </div>
+      </div>
+
+      <div style=${{padding:"12px 18px"}}>
+        ${sExList.map(name=>{
+          const sets=sSets[name]||[];
+          const prevPR=prs[name];
+          const bestNow=sets.length?Math.max(...sets.map(s=>s.weight)):null;
+          const isNewPR=bestNow!==null&&(prevPR===undefined||bestNow>(prevPR?.weight??-1));
+          const hasStarted=sets.length>0;
+          return html`<div key=${name} style=${{background:C.surface,borderRadius:14,padding:"14px 14px 12px",marginBottom:10,border:"1px solid "+(isNewPR?w.color+"44":hasStarted?"#282828":C.border),transition:"border-color 0.2s"}}>
+            <div style=${{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:prevPR?4:10}}>
+              <div style=${{display:"flex",alignItems:"center",gap:7,flex:1,minWidth:0}}>
+                <span style=${{color:C.text,fontWeight:700,fontSize:15,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>${name}</span>
+                ${FORM_TIPS[name]&&html`<button onClick=${()=>setActiveTip(activeTip===name?null:name)}
+                  style=${{background:activeTip===name?"#1a2e14":"none",border:"none",borderRadius:6,color:activeTip===name?C.green:C.dim,cursor:"pointer",fontSize:13,padding:"4px 6px",flexShrink:0,lineHeight:1,minWidth:28,minHeight:28,display:"flex",alignItems:"center",justifyContent:"center"}}>ⓘ</button>`}
+              </div>
+              <div style=${{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+                ${isNewPR&&html`<span style=${{color:C.gold,fontSize:10,fontWeight:800,letterSpacing:0.5}}>PR 🎉</span>`}
+                ${hasStarted&&html`<span style=${{background:w.color+"18",color:w.color,borderRadius:20,padding:"2px 9px",fontSize:11,fontWeight:700}}>${sets.length}</span>`}
+              </div>
+            </div>
+            ${activeTip===name&&FORM_TIPS[name]&&html`
+              <div style=${{background:"#0f1a0a",border:"1px solid #1e3018",borderRadius:10,padding:"12px 14px",marginBottom:10,fontSize:12,color:"#7ab860",lineHeight:1.65,letterSpacing:0.1}}>
+                ${FORM_TIPS[name]}
+              </div>
+            `}
+            ${prevPR&&html`<div style=${{color:C.dim,fontSize:11,marginBottom:10,display:"flex",alignItems:"center",gap:6}}>
+              <span style=${{color:C.dim,fontSize:9,fontWeight:700,letterSpacing:1,textTransform:"uppercase"}}>prev best</span>
+              <span>${prevPR.weight>0?prevPR.weight+" lb":"BW"} × ${prevPR.reps}</span>
+            </div>`}
+            <${SetLogger} sets=${sets} prevPR=${prevPR} color=${w.color} onAdd=${s=>addSet(name,s)} onRemove=${i=>removeSet(name,i)}/>
+          </div>`;
+        })}
+
+        <div style=${{marginTop:4,marginBottom:14}}>
+          <div style=${{display:"flex",gap:8}}>
+            <input value=${sAddEx} onInput=${e=>setSAddEx(e.target.value)}
+              onKeyDown=${e=>e.key==="Enter"&&addExToSession()}
+              placeholder="Add exercise (e.g. Cable Row)..."
+              style=${{flex:1,background:"#0d0d0d",border:"1px solid #1e1e1e",borderRadius:10,color:C.soft,fontSize:13,padding:"11px 14px",outline:"none"}}/>
+            <button onClick=${addExToSession} style=${{background:"#0d0d0d",border:"1px solid #1e1e1e",borderRadius:10,color:"#3a3a3a",fontSize:22,width:46,cursor:"pointer",lineHeight:1}}>+</button>
+          </div>
+        </div>
+
+        <textarea value=${sNote} onInput=${e=>setSNote(e.target.value)} placeholder="Session notes..." rows="2"
+          style=${{width:"100%",background:"#0d0d0d",border:"1px solid #1a1a1a",borderRadius:10,color:C.soft,fontSize:13,padding:"11px 14px",resize:"none",outline:"none",boxSizing:"border-box",marginBottom:14}}></textarea>
+
+        ${!sDone?html`
+          <button onClick=${finishSession} disabled=${totalSets===0}
+            style=${{width:"100%",padding:"17px",background:totalSets===0?"#161412":w.color,color:totalSets===0?C.dim:"#0a0a0a",border:totalSets===0?"1px solid #252320":"none",borderRadius:14,fontSize:16,fontWeight:800,cursor:totalSets===0?"default":"pointer",letterSpacing:0.3,transition:"background 0.2s"}}>
+            ${totalSets===0?"Log a set to save":"Save Workout"}
+          </button>
+        `:html`
+          <div style=${{background:C.surface,borderRadius:16,padding:"24px",textAlign:"center",border:"1px solid #1e1e1e"}}>
+            <div style=${{width:44,height:44,borderRadius:"50%",background:w.color+"22",border:"1px solid "+w.color+"44",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 12px",fontSize:20}}>✓</div>
+            <div style=${{color:C.text,fontWeight:800,fontSize:18,marginBottom:4}}>Workout saved</div>
+            ${(()=>{const vol=Object.values(sSets).flat().filter(s=>!s.sec&&s.weight>0).reduce((a,s)=>a+s.weight*s.reps,0);return vol>0&&html`<div style=${{color:C.dim,fontSize:12,marginBottom:6}}>${vol.toLocaleString()} lb total volume</div>`;})()}
+            ${sNewPRs.length>0&&html`<div style=${{color:C.green,fontSize:13,marginBottom:12,fontWeight:600}}>New PRs: ${sNewPRs.join(", ")} 🎉</div>`}
+            <div style=${{marginTop:14,textAlign:"left"}}>
+              ${sExList.filter(n=>(sSets[n]||[]).length>0).map(name=>{
+                const sets=sSets[name]||[];
+                return html`<div key=${name} style=${{paddingTop:9,paddingBottom:9,borderBottom:"1px solid "+C.border}}>
+                  <div style=${{color:C.text,fontSize:13,fontWeight:600,marginBottom:3}}>${name}</div>
+                  <div style=${{color:C.soft,fontSize:12,fontFamily:"monospace"}}>${sets.map((s,i)=>(s.weight>0?s.weight+"lb":"BW")+" × "+s.reps).join("  ·  ")}</div>
+                </div>`;
+              })}
+            </div>
+            <button onClick=${()=>setView("home")} style=${{marginTop:18,width:"100%",background:"#141414",border:"none",borderRadius:10,color:C.soft,padding:"13px",fontSize:14,cursor:"pointer",fontWeight:600}}>← Back to home</button>
+          </div>
+        `}
+      </div>
+    </div>`;
+  }
+
+  // ── EDIT ─────────────────────────────────────────────────────────
+  if(view==="edit"&&eData){
+    const isNew=!eKey;
+    return html`<div style=${wrap}>
+      <div style=${{padding:"18px 18px 14px",borderBottom:"1px solid "+C.border}}>
+        ${goBack("home")}
+        <div style=${{color:C.text,fontSize:20,fontWeight:800}}>${isNew?"New Workout":"Edit Workout"}</div>
+      </div>
+      <div style=${{padding:"16px 18px"}}>
+        ${lbl("Workout name")}
+        <input value=${eData.label} onInput=${e=>setEData(p=>({...p,label:e.target.value}))} placeholder="e.g. Pull, Full Body..."
+          style=${{width:"100%",background:C.surface,border:"1px solid "+C.border2,borderRadius:9,color:C.text,fontSize:15,padding:"12px 13px",outline:"none",boxSizing:"border-box",marginBottom:16}}/>
+        ${lbl("Description")}
+        <input value=${eData.sub} onInput=${e=>setEData(p=>({...p,sub:e.target.value}))} placeholder="e.g. Back + Biceps"
+          style=${{width:"100%",background:C.surface,border:"1px solid "+C.border2,borderRadius:9,color:C.text,fontSize:15,padding:"12px 13px",outline:"none",boxSizing:"border-box",marginBottom:16}}/>
+        ${lbl("Color")}
+        <div style=${{display:"flex",gap:10,marginBottom:20}}>
+          ${COLORS.map(c=>html`<button key=${c} onClick=${()=>setEData(p=>({...p,color:c}))}
+            style=${{width:26,height:26,borderRadius:"50%",background:c,cursor:"pointer",outline:"none",border:eData.color===c?"3px solid #fff":"2px solid transparent",flexShrink:0}}/>`)}
+        </div>
+        ${lbl("Exercises ("+eData.exercises.length+")")}
+        ${eData.exercises.length===0&&html`<div style=${{color:C.soft,fontSize:13,marginBottom:10,fontStyle:"italic"}}>No exercises yet.</div>`}
+        ${eData.exercises.map((ex,i)=>html`
+          <div key=${i} style=${{display:"flex",alignItems:"center",justifyContent:"space-between",background:C.surface,borderRadius:9,padding:"12px 13px",marginBottom:7,border:"1px solid "+C.border}}>
+            <span style=${{color:C.text,fontSize:14}}>${ex}</span>
+            <button onClick=${()=>setEData(p=>({...p,exercises:p.exercises.filter((_,j)=>j!==i)}))}
+              style=${{background:"none",border:"none",color:"#3a3a3a",cursor:"pointer",fontSize:18,padding:"0 0 0 14px"}}>✕</button>
+          </div>
+        `)}
+        <div style=${{display:"flex",gap:8,marginBottom:22}}>
+          <input value=${eNewEx} onInput=${e=>setENewEx(e.target.value)}
+            onKeyDown=${e=>{if(e.key==="Enter"&&eNewEx.trim()){setEData(p=>({...p,exercises:[...p.exercises,eNewEx.trim()]}));setENewEx("");}}}
+            placeholder="Add exercise..."
+            style=${{flex:1,background:C.surface,border:"1px solid "+C.border2,borderRadius:8,color:C.text,fontSize:14,padding:"11px 12px",outline:"none"}}/>
+          <button onClick=${()=>{if(!eNewEx.trim())return;setEData(p=>({...p,exercises:[...p.exercises,eNewEx.trim()]}));setENewEx("");}}
+            style=${{background:C.surface,border:"1px solid "+C.border2,borderRadius:8,color:C.soft,fontSize:20,width:46,cursor:"pointer"}}>+</button>
+        </div>
+        <button onClick=${saveEdit} disabled=${!eData.label.trim()}
+          style=${{width:"100%",padding:"15px",background:eData.label.trim()?eData.color:"#1a1a1a",color:eData.label.trim()?"#0a0a0a":C.soft,border:"none",borderRadius:12,fontSize:15,fontWeight:800,cursor:eData.label.trim()?"pointer":"default",marginBottom:10}}>
+          ${isNew?"Create Workout":"Save Changes"}
+        </button>
+        ${!isNew&&!eConfirm&&html`
+          <button onClick=${()=>setEConfirm(true)}
+            style=${{width:"100%",padding:"13px",background:"none",color:"#5a2828",border:"1px solid #2a1515",borderRadius:12,fontSize:14,fontWeight:600,cursor:"pointer"}}>
+            Delete this workout
+          </button>
+        `}
+        ${!isNew&&eConfirm&&html`
+          <div style=${{background:"#120a0a",border:"1px solid #3a1515",borderRadius:12,padding:"14px",textAlign:"center"}}>
+            <div style=${{color:"#d06060",fontSize:14,marginBottom:12,fontWeight:600}}>Delete "${eData.label}"?</div>
+            <div style=${{display:"flex",gap:10}}>
+              <button onClick=${()=>setEConfirm(false)} style=${{flex:1,padding:"11px",background:"#1a1a1a",border:"none",borderRadius:8,color:C.soft,cursor:"pointer",fontSize:14}}>Cancel</button>
+              <button onClick=${deleteWorkout} style=${{flex:1,padding:"11px",background:"#3a1515",border:"none",borderRadius:8,color:"#e06060",cursor:"pointer",fontSize:14,fontWeight:700}}>Delete</button>
+            </div>
+          </div>
+        `}
+      </div>
+    </div>`;
+  }
+
+  // ── HISTORY ──────────────────────────────────────────────────────
+  if(view==="history")return html`<div style=${wrap}>
+    <div style=${{padding:"18px 18px 14px",borderBottom:"1px solid "+C.border}}>
+      ${goBack("home")}
+      <div style=${{color:C.text,fontSize:22,fontWeight:800}}>History</div>
+      <div style=${{color:C.soft,fontSize:13,marginTop:2}}>${sessions.length} sessions logged</div>
+    </div>
+    <div style=${{padding:"12px 18px"}}>
+      ${!sessions.length&&html`
+        <div style=${{textAlign:"center",padding:"60px 0 40px"}}>
+          <div style=${{color:C.soft,fontSize:14,marginBottom:16}}>No sessions yet.</div>
+          <button onClick=${()=>setView("home")} style=${{background:C.surface,border:"1px solid "+C.border,borderRadius:10,color:C.soft,padding:"11px 20px",fontSize:13,cursor:"pointer"}}>← Start your first workout</button>
+        </div>
+      `}
+      ${(()=>{
+        const grouped={};
+        sessions.forEach(s=>{
+          const d=new Date(s.date+"T12:00:00");
+          const key=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
+          const label=d.toLocaleDateString("en-US",{month:"long",year:"numeric"});
+          if(!grouped[key])grouped[key]={label,sessions:[]};
+          grouped[key].sessions.push(s);
+        });
+        const sortedKeys=Object.keys(grouped).sort((a,b)=>b.localeCompare(a));
+        return sortedKeys.map((key,idx)=>{
+          const group=grouped[key];
+          group.sessions.sort((a,b)=>b.date.localeCompare(a.date));
+          const isOpen=key in histOpenMonths?histOpenMonths[key]:idx===0;
+          return html`
+          <div key=${key} style=${{marginBottom:isOpen?16:8}}>
+            <button onClick=${()=>setHistOpenMonths(p=>({...p,[key]:!isOpen}))}
+              style=${{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",
+                background:"none",border:"none",cursor:"pointer",padding:"6px 0 12px",
+                borderBottom:"1px solid "+(isOpen?C.border:"transparent")}}>
+              <div style=${{display:"flex",alignItems:"center",gap:10}}>
+                <span style=${{color:"rgba(255,255,255,0.65)",fontSize:10,fontWeight:700,letterSpacing:2.5,textTransform:"uppercase"}}>${group.label}</span>
+                <span style=${{background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:20,color:"rgba(255,255,255,0.55)",fontSize:10,fontWeight:600,padding:"1px 8px"}}>${group.sessions.length}</span>
+              </div>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"
+                style=${{transform:isOpen?"rotate(0deg)":"rotate(-90deg)",transition:"transform 0.2s ease",opacity:0.35,flexShrink:0}}>
+                <path d="M2.5 5L7 9.5L11.5 5" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+            ${isOpen&&group.sessions.map(s=>html`
+              <div key=${s.id} style=${{background:C.surface,borderRadius:12,padding:"14px 16px",marginBottom:8,borderLeft:"3px solid "+s.color}}>
+                <div style=${{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:s.note&&s.note!=="marked"?6:0}}>
+                  <div>
+                    <div style=${{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
+                      <span style=${{color:s.color,fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>${s.label}</span>
+                      <span style=${{color:"rgba(255,255,255,0.55)",fontSize:11}}>${fmtDate(s.date)}</span>
+                      ${s.note==="marked"&&html`<span style=${{background:C.muted,color:C.dim,fontSize:10,fontWeight:600,letterSpacing:0.5,padding:"2px 7px",borderRadius:20}}>quick log</span>`}
+                    </div>
+                    ${s.newPRs?.length>0&&html`<div style=${{color:C.gold,fontSize:12}}>🏆 PR: ${s.newPRs.join(", ")}</div>`}
+                    ${s.note&&s.note!=="marked"&&html`<div style=${{color:C.soft,fontSize:12,marginTop:4,fontStyle:"italic"}}>"${s.note}"</div>`}
+                  </div>
+                  ${histDeleteId===s.id
+                    ? html`<div style=${{display:"flex",gap:6}}>
+                        <button onClick=${()=>setHistDeleteId(null)} style=${{background:"#1a1a25",border:"none",borderRadius:8,color:C.soft,cursor:"pointer",fontSize:12,padding:"7px 10px"}}>Cancel</button>
+                        <button onClick=${()=>{deleteSession(s.id);setHistDeleteId(null);}} style=${{background:"#2a1010",border:"1px solid #3a1515",borderRadius:8,color:"#c05050",cursor:"pointer",fontSize:12,fontWeight:700,padding:"7px 10px"}}>Confirm</button>
+                      </div>`
+                    : html`<button onClick=${()=>setHistDeleteId(s.id)} style=${{background:"none",border:"none",color:"#3a3850",cursor:"pointer",fontSize:16,padding:"4px 8px"}}>🗑</button>`
+                  }
+                </div>
+                ${(s.exercises||Object.keys(s.sets||{})).map(name=>{
+                  const sets=(s.sets||{})[name]||[];
+                  if(!sets.length)return null;
+                  return html`<div key=${name} style=${{marginTop:6,paddingTop:6,borderTop:"1px solid "+C.border}}>
+                    <span style=${{color:C.soft,fontSize:12,fontWeight:600}}>${name} </span>
+                    <span style=${{color:C.soft,fontSize:11}}>${sets.length} sets · </span>
+                    <span style=${{color:C.text,fontSize:12}}>${sets.map(st=>st.sec?st.reps+"s":((st.weight>0?st.weight+"lb":"BW")+"×"+st.reps)).join(" · ")}</span>
+                  </div>`;
+                })}
+              </div>
+            `)}
+          </div>
+        `;
+      }); })()}
+    </div>
+  </div>`;
+
+  // ── PRs ──────────────────────────────────────────────────────────
+  if(view==="prs"){
+    const prList=Object.entries(prs).sort((a,b)=>a[0].localeCompare(b[0]));
+    return html`<div style=${wrap}>
+      <div style=${{padding:"18px 18px 14px",borderBottom:"1px solid "+C.border}}>
+        ${goBack("home")}
+        <div style=${{color:C.text,fontSize:22,fontWeight:800}}>Personal Records</div>
+        <div style=${{color:C.soft,fontSize:13,marginTop:2}}>${prList.length} tracked</div>
+      </div>
+      <div style=${{padding:"12px 18px"}}>
+        ${!prList.length&&html`
+          <div style=${{textAlign:"center",padding:"60px 0 40px"}}>
+            <div style=${{color:C.gold,fontSize:28,marginBottom:12}}>🏆</div>
+            <div style=${{color:C.text,fontSize:15,fontWeight:600,marginBottom:8}}>No PRs yet</div>
+            <div style=${{color:C.soft,fontSize:13,lineHeight:1.6,marginBottom:20,maxWidth:220,margin:"0 auto 20px"}}>Log your first workout and your best sets will be tracked here automatically.</div>
+            <button onClick=${()=>setView("home")} style=${{background:C.surface,border:"1px solid "+C.border,borderRadius:10,color:C.soft,padding:"11px 20px",fontSize:13,cursor:"pointer"}}>← Start a workout</button>
+          </div>
+        `}
+        ${prList.map(([name,pr])=>{
+          const isEditing=prEdit?.name===name;
+          return html`<div key=${name} style=${{background:C.surface,borderRadius:12,padding:"14px 16px",marginBottom:8,border:"1px solid "+C.border}}>
+            ${isEditing?html`
+              <div style=${{color:C.text,fontWeight:700,fontSize:13,marginBottom:10}}>${name}</div>
+              <div style=${{display:"flex",gap:8,marginBottom:8}}>
+                <input value=${prEdit.weight} onInput=${e=>setPrEdit(p=>({...p,weight:e.target.value}))}
+                  placeholder="lb (0=BW)" type="number" inputMode="decimal"
+                  style=${{flex:1,background:"#141414",border:"1px solid #252525",borderRadius:8,color:C.text,fontSize:14,padding:"9px 11px",outline:"none"}}/>
+                <input value=${prEdit.reps} onInput=${e=>setPrEdit(p=>({...p,reps:e.target.value}))}
+                  placeholder="reps" type="number" inputMode="numeric"
+                  style=${{width:70,background:"#141414",border:"1px solid #252525",borderRadius:8,color:C.text,fontSize:14,padding:"9px 11px",outline:"none"}}/>
+              </div>
+              <div style=${{display:"flex",gap:8}}>
+                <button onClick=${()=>updatePR(name,prEdit.weight,prEdit.reps)}
+                  style=${{flex:1,padding:"9px",background:C.green,border:"none",borderRadius:8,color:"#0a0a0a",fontWeight:800,fontSize:13,cursor:"pointer"}}>Save</button>
+                <button onClick=${()=>setPrEdit(null)}
+                  style=${{padding:"9px 14px",background:"#1a1a1a",border:"none",borderRadius:8,color:C.soft,fontSize:13,cursor:"pointer"}}>Cancel</button>
+              </div>
+            `:html`
+              <div style=${{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div>
+                  <div style=${{color:C.text,fontWeight:700,fontSize:14}}>${name}</div>
+                  <div style=${{color:C.soft,fontSize:11,marginTop:2}}>${fmtDate(pr.date)}</div>
+                </div>
+                <div style=${{display:"flex",alignItems:"center",gap:10}}>
+                  <div style=${{textAlign:"right"}}>
+                    <div style=${{color:C.gold,fontWeight:800,fontSize:20,letterSpacing:-0.5}}>${pr.weight>0?pr.weight+" lb":"BW"}</div>
+                    <div style=${{color:C.soft,fontSize:12,marginTop:2}}>${pr.reps} reps</div>
+                  </div>
+                  <div style=${{display:"flex",flexDirection:"column",gap:6}}>
+                    <button onClick=${()=>setPrEdit({name,weight:pr.weight,reps:pr.reps})}
+                      style=${{background:"#141414",border:"1px solid #252525",borderRadius:8,color:C.soft,cursor:"pointer",fontSize:12,padding:"7px 12px",minHeight:34}}>Edit</button>
+                    <button onClick=${()=>deletePR(name)}
+                      style=${{background:"#1a0a0a",border:"1px solid #3a1515",borderRadius:8,color:"#c05050",cursor:"pointer",fontSize:12,padding:"7px 12px",minHeight:34}}>Del</button>
+                  </div>
+                </div>
+              </div>
+            `}
+          </div>`;
+        })}
+      </div>
+    </div>`;
+  }
+
+  // ── CALENDAR ─────────────────────────────────────────────────────
+  if(view==="calendar"){
+    const{y,m}=calMonth;
+    const firstDay=new Date(y,m,1).getDay();
+    const daysInMonth=new Date(y,m+1,0).getDate();
+    const cells=[];
+    for(let i=0;i<firstDay;i++)cells.push(null);
+    for(let d=1;d<=daysInMonth;d++)cells.push(d);
+    const today=todayISO();
+    const monthLabel=new Date(y,m,1).toLocaleDateString("en-US",{month:"long",year:"numeric"});
+    const prevMonth=()=>setCalMonth(({y,m})=>m===0?{y:y-1,m:11}:{y,m:m-1});
+    const nextMonth=()=>setCalMonth(({y,m})=>m===11?{y:y+1,m:0}:{y,m:m+1});
+    const canGoNext=new Date(y,m+1,1)<=new Date();
+
+    return html`<div style=${wrap}>
+      <div style=${{padding:"18px 18px 14px",borderBottom:"1px solid "+C.border}}>
+        ${goBack("home")}
+        <div style=${{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <button onClick=${prevMonth} style=${{background:"none",border:"none",color:C.soft,cursor:"pointer",fontSize:20,padding:"0 4px"}}>‹</button>
+          <div style=${{color:C.text,fontSize:17,fontWeight:800}}>${monthLabel}</div>
+          <button onClick=${nextMonth} disabled=${!canGoNext} style=${{background:"none",border:"none",color:canGoNext?C.soft:C.muted,cursor:canGoNext?"pointer":"default",fontSize:20,padding:"0 4px"}}>›</button>
+        </div>
+      </div>
+
+      ${calPickDate&&html`
+        <div style=${{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:50,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+          <div style=${{background:"#141414",borderRadius:"16px 16px 0 0",padding:"20px 18px 40px",width:"100%",maxWidth:480}}>
+            <div style=${{color:C.text,fontWeight:700,fontSize:16,marginBottom:4}}>Log workout for</div>
+            <div style=${{color:C.soft,fontSize:13,marginBottom:18}}>${fmtDate(calPickDate)}</div>
+            <div style=${{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+              ${Object.entries(workouts).map(([key,w])=>html`
+                <button key=${key} onClick=${()=>startSession(key,calPickDate)}
+                  style=${{background:C.surface,border:"1px solid "+C.border,borderRadius:12,padding:"14px",cursor:"pointer",textAlign:"left"}}>
+                  <div style=${{width:7,height:7,borderRadius:"50%",background:w.color,marginBottom:8}}/>
+                  <div style=${{color:C.text,fontSize:14,fontWeight:700}}>${w.label}</div>
+                  <div style=${{color:C.soft,fontSize:11,marginTop:2}}>${w.sub}</div>
+                </button>
+              `)}
+            </div>
+            <button onClick=${()=>setCalPickDate(null)} style=${{width:"100%",padding:"12px",background:"#1a1a1a",border:"none",borderRadius:10,color:C.soft,fontSize:14,cursor:"pointer"}}>Cancel</button>
+          </div>
+        </div>
+      `}
+
+      ${calViewSession&&html`
+        <div style=${{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:50,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+          <div style=${{background:"#141414",borderRadius:"16px 16px 0 0",padding:"20px 18px 40px",width:"100%",maxWidth:480}}>
+            <div style=${{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
+              <div>
+                <div style=${{color:calViewSession.color,fontSize:11,fontWeight:700,letterSpacing:2,textTransform:"uppercase",marginBottom:3}}>${calViewSession.label}</div>
+                <div style=${{color:C.text,fontWeight:800,fontSize:17}}>${fmtDate(calViewSession.date)}</div>
+              </div>
+              <button onClick=${()=>setCalViewSession(null)} style=${{background:"none",border:"none",color:C.soft,fontSize:20,cursor:"pointer",padding:0}}>✕</button>
+            </div>
+            ${(calViewSession.exercises||[]).map(name=>{
+              const sets=(calViewSession.sets||{})[name]||[];
+              if(!sets.length)return null;
+              return html`<div key=${name} style=${{paddingTop:8,paddingBottom:8,borderBottom:"1px solid "+C.border}}>
+                <div style=${{color:C.text,fontSize:13,fontWeight:600,marginBottom:3}}>${name}</div>
+                <div style=${{color:C.soft,fontSize:12}}>${sets.map((s,i)=>"Set "+(i+1)+": "+(s.weight>0?s.weight+"lb":"BW")+" × "+s.reps).join("  ·  ")}</div>
+              </div>`;
+            })}
+            ${calViewSession.note&&html`<div style=${{color:C.soft,fontSize:12,marginTop:10,fontStyle:"italic"}}>"${calViewSession.note}"</div>`}
+            <button onClick=${()=>{deleteSession(calViewSession.id);setCalViewSession(null);}}
+              style=${{width:"100%",marginTop:20,padding:"13px",background:"#1a0a0a",border:"1px solid #3a1515",borderRadius:10,color:"#c05050",fontWeight:700,fontSize:14,cursor:"pointer"}}>
+              Delete this session
+            </button>
+          </div>
+        </div>
+      `}
+
+      <div style=${{padding:"14px 18px",background:"rgba(7,7,13,0.85)",borderRadius:16,margin:"0 8px"}}>
+        <div style=${{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4,marginBottom:8}}>
+          ${["S","M","T","W","T","F","S"].map((d,i)=>html`
+            <div key=${i} style=${{textAlign:"center",color:C.soft,fontSize:10,fontWeight:700,padding:"4px 0"}}>${d}</div>
+          `)}
+        </div>
+        <div style=${{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4}}>
+          ${cells.map((day,i)=>{
+            if(!day)return html`<div key=${"e"+i}/>`;
+            const _cd=new Date(y,m,day);const iso=_cd.getFullYear()+"-"+String(_cd.getMonth()+1).padStart(2,"0")+"-"+String(_cd.getDate()).padStart(2,"0");
+            const isFuture=iso>today;
+            const isToday=iso===today;
+            const sessionForDay=sessions.find(s=>s.date===iso);
+            const dotColor=sessionForDay?.color;
+            const bgColor=dotColor?(dotColor+"44"):isToday?"#1e1c2a":isFuture?"rgba(12,11,18,0.5)":"rgba(15,14,22,0.75)";
+            const borderColor=dotColor?dotColor+"33":isToday?"#333":"rgba(255,255,255,0.04)";
+            return html`<div key=${iso}
+              onClick=${()=>{
+                if(isFuture)return;
+                if(sessionForDay)setCalViewSession(sessionForDay);
+                else setCalPickDate(iso);
+              }}
+              style=${{
+                aspectRatio:"1",borderRadius:8,
+                background:bgColor,
+                border:"1px solid "+borderColor,
+                display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+                cursor:isFuture?"default":"pointer",
+                position:"relative",
+              }}>
+              <span style=${{color:isFuture?"#2a2838":isToday?C.text:dotColor?C.text:C.soft,fontSize:13,fontWeight:isToday||dotColor?700:400}}>${day}</span>
+              ${dotColor&&html`<div style=${{width:5,height:5,borderRadius:"50%",background:dotColor,boxShadow:"0 0 6px "+dotColor,marginTop:2}}/>`}
+            </div>`;
+          })}
+        </div>
+
+        ${(()=>{
+          const monthSessions=sessions.filter(s=>{const d=new Date(s.date+"T12:00:00");return d.getFullYear()===y&&d.getMonth()===m;});
+          const byType={};
+          monthSessions.forEach(s=>{byType[s.key]=(byType[s.key]||{label:s.label,color:workouts[s.key]?.color||s.color,count:0});byType[s.key].count++;});
+          const typeList=Object.values(byType).sort((a,b)=>b.count-a.count);
+          const monthVol=monthSessions.reduce((a,s)=>a+Object.values(s.sets||{}).flat().filter(x=>!x.sec&&x.weight>0).reduce((b,x)=>b+x.weight*x.reps,0),0);
+          return html`<div style=${{marginTop:20}}>
+            <div style=${{display:"flex",gap:8,marginBottom:16}}>
+              <div style=${{flex:1,background:C.surface,borderRadius:12,padding:"12px 14px",border:"1px solid "+C.border,textAlign:"center"}}>
+                <div style=${{color:C.text,fontSize:22,fontWeight:200,lineHeight:1}}>${monthSessions.length}</div>
+                <div style=${{color:"rgba(255,255,255,0.35)",fontSize:10,fontWeight:600,letterSpacing:1,textTransform:"uppercase",marginTop:4}}>sessions</div>
+              </div>
+              <div style=${{flex:1,background:C.surface,borderRadius:12,padding:"12px 14px",border:"1px solid "+C.border,textAlign:"center"}}>
+                <div style=${{color:monthVol>0?C.gold:C.dim,fontSize:monthVol>999999?13:monthVol>99999?17:22,fontWeight:200,lineHeight:1,letterSpacing:-0.5}}>${monthVol>0?monthVol.toLocaleString():"—"}</div>
+                <div style=${{color:"rgba(255,255,255,0.35)",fontSize:10,fontWeight:600,letterSpacing:1,textTransform:"uppercase",marginTop:4}}>lbs lifted</div>
+              </div>
+            </div>
+            ${/* Breakdown by type */typeList.length>0&&html`
+              <div style=${{display:"flex",flexWrap:"wrap",gap:6,marginBottom:16}}>
+                ${typeList.map(t=>html`
+                  <div style=${{display:"flex",alignItems:"center",gap:6,background:t.color+"18",border:"1px solid "+t.color+"33",borderRadius:20,padding:"5px 12px"}}>
+                    <div style=${{width:6,height:6,borderRadius:"50%",background:t.color,flexShrink:0}}/>
+                    <span style=${{color:C.text,fontSize:12,fontWeight:600}}>${t.label}</span>
+                    <span style=${{color:t.color,fontSize:12,fontWeight:700}}>${t.count}×</span>
+                  </div>
+                `)}
+              </div>
+            `}
+            ${/* Session list */null}
+            <div style=${{color:"rgba(255,255,255,0.35)",fontSize:10,fontWeight:600,letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>Sessions</div>
+            ${monthSessions.length===0&&html`<div style=${{color:C.dim,fontSize:13}}>No sessions logged this month.</div>`}
+            ${monthSessions.sort((a,b)=>b.date.localeCompare(a.date)).map(s=>html`
+              <div key=${s.id} style=${{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:"1px solid "+C.border}}>
+                <div style=${{width:8,height:8,borderRadius:"50%",background:workouts[s.key]?.color||s.color,flexShrink:0}}/>
+                <div style=${{flex:1}}>
+                  <span style=${{color:C.text,fontSize:13,fontWeight:600}}>${s.label}</span>
+                  <span style=${{color:C.soft,fontSize:12,marginLeft:8}}>${fmtDate(s.date)}</span>
+                </div>
+                ${s.newPRs?.length>0&&html`<span style=${{color:C.green,fontSize:11}}>🎉</span>`}
+              </div>
+            `)}
+          </div>`;
+        })()}
+      </div>
+    </div>`;
+  }
+
+  // ── BACKUP ───────────────────────────────────────────────────────
+  if(view==="backup"){
+    return html`<div style=${wrap}>
+      <div style=${{padding:"18px 18px 14px",borderBottom:"1px solid "+C.border}}>
+        ${goBack("home")}
+        <div style=${{color:C.text,fontSize:22,fontWeight:800}}>Backup & Restore</div>
+        <div style=${{color:C.soft,fontSize:13,marginTop:2}}>${sessions.length} sessions · ${Object.keys(prs).length} PRs</div>
+      </div>
+      <div style=${{padding:"20px 18px"}}>
+
+        ${/* EXPORT */null}
+        <div style=${{background:C.surface,borderRadius:14,padding:"20px",marginBottom:12,border:"1px solid "+C.border}}>
+          <div style=${{color:C.text,fontWeight:700,fontSize:15,marginBottom:6}}>Export</div>
+          <div style=${{color:C.soft,fontSize:13,lineHeight:1.6,marginBottom:16}}>
+            Downloads all your sessions, PRs, and workouts as a single file. On iPhone it saves to your Files app — move it to iCloud or Notes to keep it safe.
+          </div>
+          <button onClick=${exportData}
+            style=${{width:"100%",padding:"15px",background:exportDone?"#1e2e10":C.green,border:exportDone?"1px solid #3a5a18":"none",borderRadius:12,color:exportDone?"#7ab840":"#0a0a0a",fontWeight:800,fontSize:15,cursor:"pointer",transition:"all 0.3s"}}>
+            ${exportDone?"✓ Backup saved to Files":"Download Backup"}
+          </button>
+        </div>
+
+        ${/* RESTORE */null}
+        <div style=${{background:C.surface,borderRadius:14,padding:"20px",border:"1px solid "+C.border}}>
+          <div style=${{color:C.text,fontWeight:700,fontSize:15,marginBottom:6}}>Restore</div>
+          <div style=${{color:C.soft,fontSize:13,lineHeight:1.6,marginBottom:16}}>
+            Load a backup file to bring back your data. This replaces everything currently saved — export first if you want to keep it.
+          </div>
+
+          ${importStatus==="confirm"&&importPending&&html`
+            <div style=${{background:"#130e08",border:"1px solid #3a2a10",borderRadius:12,padding:"16px",marginBottom:12}}>
+              <div style=${{color:"#e0a040",fontWeight:800,fontSize:14,marginBottom:6}}>Replace your current data?</div>
+              <div style=${{color:C.soft,fontSize:12,lineHeight:1.6,marginBottom:14}}>
+                This will load ${importPending.sessions?.length||0} sessions and ${Object.keys(importPending.prs||{}).length} PRs from the backup file. Your current data will be overwritten.
+              </div>
+              <div style=${{display:"flex",gap:8}}>
+                <button onClick=${confirmRestore}
+                  style=${{flex:1,padding:"12px",background:"#e0a040",border:"none",borderRadius:10,color:"#0a0a0a",fontWeight:800,fontSize:14,cursor:"pointer"}}>
+                  Yes, restore it
+                </button>
+                <button onClick=${()=>{setImportStatus(null);setImportPending(null);}}
+                  style=${{padding:"12px 16px",background:"#1a1a1a",border:"none",borderRadius:10,color:C.soft,fontSize:14,cursor:"pointer"}}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          `}
+
+          ${importStatus==="success"&&html`
+            <div style=${{background:"#0d1a0d",border:"1px solid #1e3a18",borderRadius:10,padding:"13px 16px",marginBottom:12,color:"#7ab840",fontSize:13,fontWeight:700}}>
+              ✓ Data restored successfully
+            </div>
+          `}
+
+          ${importStatus==="error"&&html`
+            <div style=${{background:"#1a0d0d",border:"1px solid #3a1818",borderRadius:10,padding:"13px 16px",marginBottom:12,color:"#c06060",fontSize:13,fontWeight:700}}>
+              Couldn't read that file — make sure it's a Swoly Bible backup.
+            </div>
+          `}
+
+          ${importStatus!=="confirm"&&html`
+            <label style=${{display:"block",width:"100%",padding:"15px",background:"#111",border:"1px dashed #2a2826",borderRadius:12,color:C.dim,fontWeight:700,fontSize:15,cursor:"pointer",textAlign:"center",boxSizing:"border-box"}}>
+              Choose Backup File
+              <input type="file" accept=".json" onInput=${importData} style=${{display:"none"}}/>
+            </label>
+          `}
+        </div>
+
+        <div style=${{marginTop:16,padding:"14px 16px",background:"#0d0d0b",borderRadius:12,border:"1px solid #1a1a18"}}>
+          <div style=${{color:C.dim,fontSize:12,lineHeight:1.7}}>
+            Your data syncs across your devices automatically. Use Export as a backup before switching phones.
+          </div>
+        </div>
+
+      </div>
+    </div>`;
+  }
+
+  // ── HOME ─────────────────────────────────────────────────────────
+  const weekDays=Array.from({length:7},(_,i)=>{
+    const d=new Date();d.setDate(d.getDate()-6+i);
+    const iso=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+    const isToday=iso===todayISO();
+    const sessionForDay=sessions.find(s=>s.date===iso);
+    const liveColor=sessionForDay?(workouts[sessionForDay.key]?.color||sessionForDay.color):null;
+    return{iso,label:DAYS[d.getDay()],isToday,session:sessionForDay,color:liveColor};
+  });
+  const rawLast=[...sessions].sort((a,b)=>b.date.localeCompare(a.date))[0];
+  const lastSession=rawLast?{...rawLast,color:workouts[rawLast.key]?.color||rawLast.color}:null;
+  const todayDone=weekDays[6].color;
+  const currentStreak=streak();
+
+  return html`<div style=${wrap}>
+    <div style=${{padding:"72px 24px 28px",textAlign:"center"}}>
+      <div style=${{color:C.text,fontSize:32,fontWeight:200,letterSpacing:5,lineHeight:1.1,textTransform:"uppercase"}}>The Swoly Bible</div>
+      <div style=${{color:"rgba(184,240,74,0.5)",fontSize:11,fontWeight:400,letterSpacing:5,textTransform:"uppercase",marginTop:9}}>Mika Glo</div>
+      <div style=${{width:48,height:1,background:"linear-gradient(to right, transparent, rgba(184,240,74,0.55), transparent)",margin:"14px auto"}}/>
+      <div style=${{color:"rgba(237,233,227,0.75)",fontSize:13,fontStyle:"italic",fontWeight:300,letterSpacing:0.2,maxWidth:260,margin:"0 auto",lineHeight:1.85}}>
+        "${todayQuote()}"
+      </div>
+    </div>
+
+    ${calPickDate&&html`
+      <div onClick=${()=>{setCalPickDate(null);setCalMarkKey(null);}} style=${{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:50,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+        <div onClick=${e=>e.stopPropagation()} style=${{background:"#121212",borderRadius:"20px 20px 0 0",padding:"22px 18px 34px",width:"100%",maxWidth:480,border:"1px solid #1e1e1e",maxHeight:"55vh",overflowY:"auto"}}>
+          <div style=${{color:C.text,fontWeight:800,fontSize:16,marginBottom:2}}>Mark workout</div>
+          <div style=${{color:C.soft,fontSize:13,marginBottom:18}}>${fmtDate(calPickDate)}</div>
+          <div style=${{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
+            ${Object.entries(workouts).map(([key,w])=>html`
+              <button key=${key} onClick=${()=>setCalMarkKey(calMarkKey===key?null:key)}
+                style=${{display:"flex",alignItems:"center",gap:10,background:calMarkKey===key?w.color+"18":C.surface,border:"1px solid "+(calMarkKey===key?w.color+"55":"#1e1e1e"),borderRadius:12,padding:"13px 14px",cursor:"pointer",textAlign:"left",width:"100%"}}>
+                <div style=${{width:8,height:8,borderRadius:"50%",background:w.color,boxShadow:"0 0 8px "+w.color+"88",flexShrink:0}}/>
+                <div style=${{flex:1}}>
+                  <div style=${{color:C.text,fontSize:14,fontWeight:700}}>${w.label}</div>
+                  <div style=${{color:C.soft,fontSize:11}}>${w.sub}</div>
+                </div>
+                ${calMarkKey===key&&html`<div style=${{color:w.color,fontSize:16}}>✓</div>`}
+              </button>
+            `)}
+          </div>
+          ${calMarkKey&&html`
+            <div style=${{display:"flex",gap:8,marginBottom:8}}>
+              <button onClick=${()=>{markDay(calMarkKey,calPickDate);}}
+                style=${{flex:1,padding:"13px",background:workouts[calMarkKey]?.color,border:"none",borderRadius:12,color:"#0a0a0a",fontWeight:800,fontSize:14,cursor:"pointer"}}>
+                Quick log (no sets)
+              </button>
+              <button onClick=${()=>{const d=calPickDate;setCalPickDate(null);setCalMarkKey(null);startSession(calMarkKey,d);}}
+                style=${{flex:1,padding:"13px",background:"transparent",border:"1px solid "+(workouts[calMarkKey]?.color||C.border),borderRadius:12,color:workouts[calMarkKey]?.color||C.text,fontWeight:700,fontSize:14,cursor:"pointer"}}>
+                Log full workout →
+              </button>
+            </div>
+          `}
+          <button onClick=${()=>{setCalPickDate(null);setCalMarkKey(null);}} style=${{width:"100%",padding:"13px",background:"#1a1a1a",border:"none",borderRadius:10,color:C.soft,fontSize:14,cursor:"pointer"}}>Cancel</button>
+        </div>
+      </div>
+    `}
+
+    <div style=${{padding:"0 24px 24px"}}>
+      <div style=${{display:"flex",justifyContent:"space-between"}}>
+        ${weekDays.map(d=>html`
+          <div key=${d.iso} style=${{textAlign:"center",cursor:(!d.color&&!d.isToday)?"pointer":"default"}} onClick=${()=>{if(!d.color&&!d.isToday)setCalPickDate(d.iso);}}>
+            <div style=${{
+              fontSize:8,fontWeight:500,marginBottom:8,letterSpacing:1.5,textTransform:"uppercase",
+              color:d.isToday?"#ffffff":"rgba(255,255,255,0.55)",
+              textShadow:d.isToday?"0 0 10px rgba(255,255,255,0.8), 0 0 20px rgba(255,255,255,0.4)":"none"
+            }}>${d.label}</div>
+            <div style=${{
+              width:28,height:28,borderRadius:"50%",
+              display:"flex",alignItems:"center",justifyContent:"center",
+              background:d.color?d.color+"18":d.isToday?"rgba(255,255,255,0.04)":"transparent",
+              border:d.isToday&&!d.color?"1px solid rgba(255,255,255,0.08)":"1px solid transparent",
+              transition:"all 0.15s"
+            }}>
+              ${d.color
+                ?html`<div style=${{width:9,height:9,borderRadius:"50%",background:d.color,boxShadow:"0 0 12px "+d.color+"99"}}/>`
+                :d.isToday
+                  ?html`<div style=${{width:3,height:3,borderRadius:"50%",background:"rgba(255,255,255,0.25)"}}/>`
+                  :html`<div style=${{color:"#252535",fontSize:11,lineHeight:1,fontWeight:300}}>+</div>`
+              }
+            </div>
+          </div>
+        `)}
+      </div>
+    </div>
+
+    <div style=${{margin:"0 18px 20px",display:"flex",gap:8}}>
+      ${[{label:"streak",val:currentStreak,accent:C.green},{label:"PRs",val:Object.keys(prs).length,accent:C.gold}].map((s,i)=>html`
+        <div key=${i} style=${{flex:1,background:C.surface,borderRadius:14,padding:"14px",border:"1px solid "+C.border,boxShadow:"0 2px 8px rgba(0,0,0,0.3)"}}>
+          <div style=${{color:s.val>0?s.accent:C.dim,fontSize:24,fontWeight:200,lineHeight:1,letterSpacing:1,textShadow:s.val>0&&i===0?"0 0 16px rgba(184,240,74,0.4)":"none"}}>${s.val}</div>
+          <div style=${{color:"rgba(255,255,255,0.35)",fontSize:10,marginTop:4,fontWeight:600,letterSpacing:1.5,textTransform:"uppercase"}}>${s.label}</div>
+        </div>
+      `)}
+      <div style=${{flex:2,background:lastSession?"linear-gradient(135deg,"+lastSession.color+"12,"+C.surface+")":C.surface,borderRadius:14,padding:"14px",border:"1px solid "+(lastSession?lastSession.color+"22":C.border),overflow:"hidden",boxShadow:"0 2px 8px rgba(0,0,0,0.3)"}}>
+        <div style=${{color:"rgba(255,255,255,0.35)",fontSize:10,fontWeight:600,letterSpacing:1.5,textTransform:"uppercase",marginBottom:5}}>Last</div>
+        ${lastSession?html`
+          <div style=${{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+            <div style=${{width:7,height:7,borderRadius:"50%",background:lastSession.color,boxShadow:"0 0 8px "+lastSession.color+"88",flexShrink:0}}/>
+            <div style=${{color:C.text,fontSize:14,fontWeight:800,letterSpacing:-0.3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>${lastSession.label}</div>
+          </div>
+          <div style=${{color:C.dim,fontSize:11}}>${fmtDate(lastSession.date)}</div>
+        `:html`<div style=${{color:"#252320",fontSize:12,marginTop:4}}>—</div>`}
+      </div>
+    </div>
+
+    <div style=${{padding:"0 18px"}}>
+      <div style=${{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+        ${Object.entries(workouts).map(([key,w])=>html`
+          <div key=${key} style=${{position:"relative"}}>
+            <button onClick=${()=>startSession(key)} style=${{
+              width:"100%",
+              background:"linear-gradient(160deg, "+w.color+"0d 0%, "+C.surface+" 55%)",
+              border:"1px solid "+w.color+"18",
+              borderTop:"1px solid "+w.color+"55",
+              borderRadius:18,padding:"18px 16px 16px",
+              cursor:"pointer",textAlign:"left",display:"block",
+              boxShadow:"0 2px 20px rgba(0,0,0,0.5)"
+            }}>
+              <div style=${{color:C.text,fontSize:16,fontWeight:700,marginBottom:4,letterSpacing:-0.2}}>${w.label}</div>
+              <div style=${{color:C.soft,fontSize:11,lineHeight:1.5,marginBottom:14}}>${w.sub}</div>
+              <div style=${{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <span style=${{color:w.color,fontSize:10,fontWeight:600,letterSpacing:1.5,textTransform:"uppercase",opacity:0.8}}>Start workout</span>
+                <span style=${{color:w.color,fontSize:13,opacity:0.7}}>→</span>
+              </div>
+            </button>
+            <button onClick=${e=>{e.stopPropagation();openEdit(key);}} style=${{
+              position:"absolute",top:10,right:10,
+              background:"rgba(255,255,255,0.04)",
+              border:"1px solid rgba(255,255,255,0.07)",
+              borderRadius:8,
+              color:"rgba(255,255,255,0.28)",cursor:"pointer",
+              fontSize:14,padding:"5px 9px",lineHeight:1,
+              letterSpacing:3
+            }}>···</button>
+          </div>
+        `)}
+        <button onClick=${()=>openEdit(null)} style=${{
+          background:"transparent",
+          border:"1px dashed rgba(255,255,255,0.1)",
+          borderRadius:18,padding:"18px 16px",
+          cursor:"pointer",display:"flex",
+          flexDirection:"column",justifyContent:"center",
+          alignItems:"center",minHeight:100,gap:4
+        }}>
+          <div style=${{color:"rgba(255,255,255,0.2)",fontSize:22,lineHeight:1,fontWeight:200}}>+</div>
+          <div style=${{color:"rgba(255,255,255,0.2)",fontSize:10,fontWeight:500,letterSpacing:1}}>New workout</div>
+        </button>
+      </div>
+
+      <div style=${{display:"flex",gap:8,marginTop:2}}>
+        ${[
+          {label:"PRs",action:()=>setView("prs")},
+          {label:"History",action:()=>setView("history")},
+          {label:"Calendar",action:()=>{const n=new Date();setCalMonth({y:n.getFullYear(),m:n.getMonth()});setView("calendar");}},
+          {label:"Backup",action:()=>setView("backup")},
+        ].map(({label,action})=>html`
+          <button onClick=${action} style=${{
+            flex:1,background:C.surface,border:"1px solid "+C.border,
+            borderRadius:14,padding:"14px 6px",cursor:"pointer",textAlign:"center",
+            boxShadow:"0 1px 6px rgba(0,0,0,0.3)",minHeight:48
+          }}>
+            <div style=${{color:"rgba(255,255,255,0.4)",fontSize:11,fontWeight:600,letterSpacing:0.8}}>${label}</div>
+          </button>
+        `)}
+      </div>
+    </div>
+  </div>`;
+}
+
+render(html`<${App}/>`,document.getElementById('app'));
+</script>
+</body>
+</html>
